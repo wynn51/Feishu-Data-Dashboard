@@ -1,0 +1,1823 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>源数据到数据中间表到结果表 ER 图</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --ink: #202936;
+      --muted: #637083;
+      --panel: #fffdf7;
+      --source: #176b62;
+      --middle: #285f9f;
+      --result: #7a4b16;
+      --map: #66549a;
+      --logic: #a9502d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(32, 41, 54, .045) 1px, transparent 1px),
+        linear-gradient(rgba(32, 41, 54, .045) 1px, transparent 1px),
+        radial-gradient(circle at 8% 4%, rgba(201, 149, 46, .18), transparent 28%),
+        radial-gradient(circle at 92% 0%, rgba(23, 107, 98, .13), transparent 24%),
+        var(--bg);
+      background-size: 40px 40px, 40px 40px, auto, auto, auto;
+      font-family: "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    }
+    .page { width: min(1760px, calc(100vw - 36px)); margin: 0 auto; padding: 26px 0 34px; }
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: end;
+      margin-bottom: 16px;
+    }
+    h1 { margin: 0 0 10px; font-size: clamp(30px, 4.2vw, 62px); line-height: 1.04; font-weight: 900; letter-spacing: 0; }
+    .lead { margin: 0; max-width: 1180px; color: var(--muted); font-size: 15px; line-height: 1.8; }
+    .toolbar {
+      position: fixed;
+      top: 18px;
+      right: 22px;
+      z-index: 20;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      padding: 8px;
+      background: rgba(255, 253, 247, .86);
+      border: 1px solid rgba(32, 41, 54, .12);
+      box-shadow: 0 12px 32px rgba(32, 41, 54, .12);
+      backdrop-filter: blur(8px);
+    }
+    button {
+      border: 1px solid rgba(32, 41, 54, .18);
+      background: rgba(255, 253, 247, .9);
+      color: var(--ink);
+      padding: 10px 14px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(32, 41, 54, .07);
+    }
+    button.active { color: #fff; background: var(--ink); }
+    .canvas-shell {
+      position: relative;
+      width: 100vw;
+      margin-left: calc(50% - 50vw);
+      min-height: 1080px;
+      height: 1560px;
+      border: 1px solid rgba(32, 41, 54, .15);
+      background: rgba(255, 253, 247, .9);
+      box-shadow: 0 18px 48px rgba(32, 41, 54, .12);
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-gutter: stable;
+      overscroll-behavior-x: contain;
+    }
+    .canvas-shell::-webkit-scrollbar { height: 13px; }
+    .canvas-shell::-webkit-scrollbar-track { background: rgba(32, 41, 54, .06); }
+    .canvas-shell::-webkit-scrollbar-thumb {
+      background: rgba(32, 41, 54, .28);
+      border: 3px solid rgba(255, 253, 247, .88);
+      border-radius: 999px;
+    }
+    .canvas-shell::after {
+      content: "左右滚动查看完整链路";
+      position: sticky;
+      left: calc(100% - 190px);
+      bottom: 12px;
+      display: inline-flex;
+      width: 170px;
+      transform: translateY(-18px);
+      justify-content: center;
+      padding: 7px 10px;
+      color: rgba(32, 41, 54, .64);
+      background: rgba(255, 253, 247, .88);
+      border: 1px solid rgba(32, 41, 54, .12);
+      font-size: 12px;
+      font-weight: 900;
+      pointer-events: none;
+      z-index: 3;
+    }
+    canvas { display: block; width: 2800px; max-width: none; height: 100%; }
+    .legend {
+      position: absolute;
+      top: 16px;
+      left: 18px;
+      width: max-content;
+      max-width: calc(100% - 36px);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border: 1px solid rgba(32, 41, 54, .12);
+      background: rgba(255, 253, 247, .94);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .notes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .note { min-height: 136px; padding: 16px 18px; border: 1px solid rgba(32, 41, 54, .14); background: rgba(255, 253, 247, .84); }
+    .note h2 { margin: 0 0 10px; font-size: 15px; line-height: 1.35; }
+    .note p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.75; }
+    @media (max-width: 960px) {
+      .page { width: min(100vw - 20px, 760px); padding-top: 16px; }
+      header { grid-template-columns: 1fr; }
+      .toolbar { top: 10px; right: 10px; left: 10px; justify-content: flex-start; }
+      .notes { grid-template-columns: 1fr; }
+      .canvas-shell { width: 100vw; margin-left: calc(50% - 50vw); }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <h1>源数据到数据中间表到结果表 ER 图</h1>
+        <p class="lead">一个 Excel 工作簿是一张实体卡；多个 sheet 在卡片内分区。每日中间表保存后需由 Excel 全量计算公式并保存缓存，结果表读取这些缓存值。默认只展示实体和 sheet；点击任意 sheet 后，高亮引用关系，并在右侧展示引用、被引用、字段保留/删除/新增公式。</p>
+      </div>
+      <div class="toolbar" aria-label="视图切换">
+        <button class="active" type="button" data-view="daily">每日链路</button>
+        <button type="button" data-view="monthly">月度链路</button>
+      </div>
+    </header>
+
+    <section class="canvas-shell" id="canvasShell">
+      <canvas id="erCanvas" aria-label="源数据到数据中间表到结果表 ER 图"></canvas>
+      <div class="legend">
+        <span><i class="dot" style="background: var(--source)"></i>源数据 Excel</span>
+        <span><i class="dot" style="background: var(--middle)"></i>数据中间表 Excel</span>
+        <span><i class="dot" style="background: var(--result)"></i>结果表 Excel</span>
+        <span><i class="dot" style="background: var(--map)"></i>映射/维表</span>
+        <span><i class="dot" style="background: var(--logic)"></i>选中后显示逻辑</span>
+      </div>
+    </section>
+
+    <section class="notes">
+      <article class="note"><h2>每日粒度来源</h2><p>三张数据口径分别复制最新数据粒度表的 `SKU日销（管理）`、`类目日销（管理）`、`运营日销`；结果表的行集合、顺序和维度值以本次中间表数据口径为准。</p></article>
+      <article class="note"><h2>每日结果表</h2><p>`SKU日销`同步供应商、四个单价和刷新指标缓存，保留 12 个派生公式；`类目日销`从结果表 `SKU日销` 使用内部公式汇总，`运营日销`同步运营中间表销量。</p></article>
+      <article class="note"><h2>公式激活</h2><p>每日中间表生成后，Python 调用本机 Excel 打开工作簿，执行全量公式计算、保存并关闭；若日销中间表销量字段没有缓存值，则停止进入结果表。</p></article>
+      <article class="note"><h2>月度链路</h2><p>`在途批次表`、`月度数据中间表` 已按新规则分别存放到同名子目录；五份 `净需求计算表_站点批次_月份` 继续保存在 `净需求计算表` 子目录，并最终更新运营大盘历史月份块。</p></article>
+      <article class="note"><h2>交互规则</h2><p>连线默认隐藏，避免压住卡片文字；点击 sheet 后只显示相关连线，右侧逻辑说明中 sheet 用浅绿色、字段和公式用浅蓝色底色标注。</p></article>
+    </section>
+  </main>
+
+  <script>
+    const css = getComputedStyle(document.documentElement);
+    const COLORS = {
+      ink: css.getPropertyValue("--ink").trim(),
+      muted: css.getPropertyValue("--muted").trim(),
+      source: css.getPropertyValue("--source").trim(),
+      middle: css.getPropertyValue("--middle").trim(),
+      result: css.getPropertyValue("--result").trim(),
+      map: css.getPropertyValue("--map").trim(),
+      logic: css.getPropertyValue("--logic").trim(),
+      panel: css.getPropertyValue("--panel").trim()
+    };
+
+    const sourceEntities = [
+      {
+        id: "src_sales",
+        lane: "source",
+        title: "源数据 / 千易销售数据",
+        file: "商品销售统计_YYYY-MM-DD.xlsx / 商品销售统计_YYYY-MM.xlsx",
+        sheets: [
+          { id: "src_sales.sheet", name: "sheet1", desc: "每日链路取执行日 D 的前一天文件；月表取对应月文件。", monthly: true, daily: true }
+        ]
+      },
+      {
+        id: "src_stock",
+        lane: "source",
+        title: "源数据 / 千易库存数据",
+        file: "库存查询_YYYY-MM-DD.xlsx",
+        sheets: [
+          { id: "src_stock.sheet", name: "sheet1", desc: "每日取对应日；月度中间表取每月 1 号快照。", monthly: true, daily: true }
+        ]
+      },
+      {
+        id: "src_in_new",
+        lane: "source",
+        title: "源数据 / 千易入库单数据",
+        file: "入库单明细_新建_YYYY-MM-DD.xlsx",
+        sheets: [
+          { id: "src_in_new.sheet", name: "sheet1", desc: "每日取对应日；在途批次表取每月 1 号快照。", monthly: true, daily: true }
+        ]
+      },
+      {
+        id: "src_in_receiving",
+        lane: "source",
+        title: "源数据 / 千易入库单数据",
+        file: "入库单明细_收货中_YYYY-MM-DD.xlsx",
+        sheets: [
+          { id: "src_in_receiving.sheet", name: "sheet1", desc: "保留入库单收货中明细，并计算未收到库存。", monthly: true, daily: true }
+        ]
+      },
+      {
+        id: "src_feishu",
+        lane: "source",
+        title: "源数据 / 飞书人工维护数据",
+        file: "入库单跟踪表/入库单跟踪表_YYYY-MM-DD.xlsx",
+        sheets: [
+          { id: "src_feishu.sheet", name: "入库单跟踪表", desc: "维护入库单发货时间、到仓时间、是否到货；月度进入在途批次表。", monthly: true, daily: true }
+        ]
+      },
+      {
+        id: "src_a_unshipped",
+        lane: "source",
+        title: "源数据 / 飞书人工维护数据",
+        file: "A未发数据表/A未发数据表_YYYY年MM月.xlsx",
+        sheets: [
+          { id: "src_a_unshipped.sheet", name: "A未发数据表", desc: "进入在途批次表，补充未生成入库单号的供应商未发数据。", monthly: true, daily: false }
+        ]
+      },
+      {
+        id: "src_net_demand",
+        lane: "source",
+        title: "源数据 / 净需求计算表模板",
+        file: "@净需求计算表-站点模板.xlsx（只读）",
+        sheets: [
+          { id: "src_net_demand.demand", name: "净需求表", desc: "保留产品粒度、公式结构、包装取整规则与人工字段。", monthly: true, daily: false },
+          { id: "src_net_demand.target", name: "计划目标表", desc: "人工维护月度目标；执行前校验 M 至 M+5 完整存在。", monthly: true, daily: false },
+          { id: "src_net_demand.value", name: "货值情况", desc: "按主SKU分类汇总库存、目标及备货货值。", monthly: true, daily: false },
+          { id: "src_net_demand.stock", name: "千易库存数据", desc: "模板中的库存字段、公式样式与列顺序。", monthly: true, daily: false },
+          { id: "src_net_demand.receiving", name: "千易入库单_收货中", desc: "模板保留站点公式样式；差异数据由脚本按字段名生成。", monthly: true, daily: false },
+          { id: "src_net_demand.share", name: "销量占比", desc: "保留历史90天销量窗口和颜色/尺码占比公式。", monthly: true, daily: false },
+          { id: "src_net_demand.sku", name: "SKU信息表", desc: "模板映射区域，运行时由最新映射表按值覆盖。", monthly: true, daily: false },
+          { id: "src_net_demand.warehouse", name: "仓库信息表", desc: "模板仓库映射区域，运行时由最新映射表按值覆盖。", monthly: true, daily: false },
+          { id: "src_net_demand.inbound", name: "入库单信息", desc: "六列结构：入库单号、仓库、商品编码、数量及两类日期。", monthly: true, daily: false },
+          { id: "src_net_demand.batch", name: "在途批次数据", desc: "17列前四批结构；运行时按站点批次整表覆盖。", monthly: true, daily: false }
+        ]
+      },
+      {
+        id: "src_map",
+        lane: "source",
+        map: true,
+        title: "源数据 / 映射表",
+        file: "SKU、店铺、仓库映射表.xlsx",
+        sheets: [
+          { id: "src_map.sku", name: "SKU信息表", desc: "SKU、主SKU分类、成本、海运、售价。", monthly: true, daily: true },
+          { id: "src_map.store", name: "店铺信息表", desc: "店铺映射运营与站点。", monthly: true, daily: true },
+          { id: "src_map.warehouse", name: "仓库信息表", desc: "仓库映射中文站点与英文站点。", monthly: true, daily: true }
+        ]
+      },
+      {
+        id: "src_month_grain",
+        lane: "source",
+        map: true,
+        title: "源数据 / 月度结果表数据粒度",
+        file: "@数据粒度表_运营大盘数据监控表.xlsx",
+        sheets: [
+          { id: "src_month_grain.a1", name: "A1类目销售数据表（粒度）", desc: "提供A1完整管理粒度、产品维度及原始排序。", monthly: true, daily: false },
+          { id: "src_month_grain.a2", name: "A2类目SKU销售监控表（粒度）", desc: "提供A2完整SKU粒度、产品维度及原始排序。", monthly: true, daily: false },
+          { id: "src_month_grain.b1", name: "B1运营类目销售表（粒度）", desc: "提供B1站点+运营+类目完整粒度及排序。", monthly: true, daily: false },
+          { id: "src_month_grain.b2", name: "B2店铺类目销售数据（粒度）", desc: "提供B2站点+店铺+主SKU分类完整粒度及排序。", monthly: true, daily: false }
+        ]
+      },
+      {
+        id: "src_daily_grain",
+        lane: "source",
+        map: true,
+        title: "源数据 / 每日结果表数据粒度",
+        file: "@数据粒度表_每日销售及库存跟进表*.xlsx（最新）",
+        sheets: [
+          { id: "src_daily_grain.sku", name: "SKU日销（管理）", desc: "提供 SKU 口径的完整行集合、顺序及产品维度。", monthly: false, daily: true },
+          { id: "src_daily_grain.cat", name: "类目日销（管理）", desc: "提供类目口径的完整行集合、顺序及产品维度。", monthly: false, daily: true },
+          { id: "src_daily_grain.op", name: "运营日销", desc: "提供运营口径的完整行集合、顺序及运营维度。", monthly: false, daily: true }
+        ]
+      }
+    ];
+
+    const middleEntities = [
+      {
+        id: "mid_daily",
+        lane: "middle",
+        title: "数据中间表 / 每日数据中间表",
+        path: "数据中间表/每日数据中间表/",
+        file: "每日数据中间表_YYYY-MM-DD.xlsx",
+        view: "daily",
+        sheets: [
+          { id: "mid_daily.skuMid", name: "SKU日销-中间", desc: "按完整 SKU 口径计算供应商、单价、库存、在途与 D-1 销量。" },
+          { id: "mid_daily.catMid", name: "类目日销-中间", desc: "按完整类目口径聚合 SKU 日销，并计算供应商。" },
+          { id: "mid_daily.opMid", name: "运营日销-中间", desc: "按完整运营口径汇总站点+运营+主SKU分类的 D-1 销量。" },
+          { id: "mid_daily.skuScope", name: "SKU日销数据口径", desc: "复制 SKU日销（管理）的指定字段和原始顺序。" },
+          { id: "mid_daily.catScope", name: "类目日销数据口径", desc: "复制 类目日销（管理）的指定字段和原始顺序。" },
+          { id: "mid_daily.opScope", name: "运营日销数据口径", desc: "复制 运营日销的指定字段和原始顺序。" },
+          { id: "mid_daily.sales", name: "千易商品销售统计", desc: "新增主SKU分类、运营、站点、销售sku数量VALUE。" },
+          { id: "mid_daily.stock", name: "千易库存数据", desc: "新增主SKU分类、站点中文、站点英文、未收到库存等。" },
+          { id: "mid_daily.inNew", name: "千易入库单_新建", desc: "新增收货仓映射、站点、预计数量VALUE、到货天数。" },
+          { id: "mid_daily.inReceiving", name: "千易入库单_收货中", desc: "保留收货中明细，新增未收到库存计算列。" },
+          { id: "mid_daily.feishu", name: "飞书-入库单跟进表", desc: "由飞书源表进入中间表，计算到货天数。" },
+          { id: "mid_daily.skuMap", name: "SKU信息表", desc: "映射表原样进入，并被销售、日销引用。" },
+          { id: "mid_daily.storeMap", name: "店铺信息表", desc: "映射店铺、运营、站点。" },
+          { id: "mid_daily.warehouseMap", name: "仓库信息表", desc: "映射仓库、中文站点、英文站点。" }
+        ]
+      },
+      {
+        id: "mid_month",
+        lane: "middle",
+        title: "数据中间表 / 月度数据中间表",
+        path: "数据中间表/月度数据中间表/",
+        file: "月度数据中间表_YYYY年MM月.xlsx",
+        view: "monthly",
+        sheets: [
+          { id: "mid_month.a1Category", name: "A1类目销售数据表", desc: "按站点+主SKU分类汇总销量、销售额、计划目标、库存和周转系数。" },
+          { id: "mid_month.a2Sku", name: "A2类目SKU销售监控表", desc: "按站点+产品编码匹配目标、销量、库存和SKU周转系数。" },
+          { id: "mid_month.b1Operator", name: "B1运营类目销售表", desc: "按站点+运营+主SKU分类汇总当月销量和销售额。" },
+          { id: "mid_month.b2Store", name: "B2店铺类目销售表", desc: "按站点+店铺+主SKU分类汇总库存、销量、客单价和销售额。" },
+          { id: "mid_month.a1Scope", name: "A1类目销售数据口径", desc: "整表复制A1类目销售数据表（粒度），保留字段与排序。" },
+          { id: "mid_month.a2Scope", name: "A2类目SKU销售监控数据口径", desc: "整表复制A2类目SKU销售监控表（粒度），作为A2唯一粒度源。" },
+          { id: "mid_month.b1Scope", name: "B1运营类目数据口径", desc: "整表复制B1运营类目销售表（粒度），类目对应主SKU分类。" },
+          { id: "mid_month.b2Scope", name: "B2店铺类目数据口径", desc: "整表复制B2店铺类目销售数据（粒度），保留原始排序。" },
+          { id: "mid_month.sales", name: "千易商品销售统计", desc: "对应月销售统计，新增月份、季度与映射字段。" },
+          { id: "mid_month.stock", name: "千易库存数据", desc: "每月 1 号库存快照，追加月份和季度。" },
+          { id: "mid_month.inReceiving", name: "千易入库单_收货中", desc: "每月 1 号收货中入库单快照。" },
+          { id: "mid_month.skuMap", name: "SKU信息表", desc: "映射表原样进入月度中间表。" },
+          { id: "mid_month.storeMap", name: "店铺信息表", desc: "映射店铺、运营、站点。" },
+          { id: "mid_month.warehouseMap", name: "仓库信息表", desc: "映射仓库与站点。" },
+          { id: "mid_month.target", name: "净需求-目标表", desc: "汇总五份已计算的分站点净需求结果，提供类目/SKU目标、批次及两级周转系数。" }
+        ]
+      },
+      {
+        id: "mid_net_demand",
+        lane: "middle",
+        title: "数据中间表 / 分站点净需求计算表",
+        path: "数据中间表/净需求计算表/",
+        file: "净需求计算表_{{站点_批次}}_YYYY年MM月.xlsx（五份）",
+        view: "monthly",
+        sheets: [
+          { id: "mid_net_demand.demand", name: "净需求表", desc: "动态生成 M 至 M+5 月份窗口；P:U 按真实月份引用计划目标表。" },
+          { id: "mid_net_demand.target", name: "计划目标表", desc: "保留模板人工目标；缺少或重复目标月份时停止执行。" },
+          { id: "mid_net_demand.value", name: "货值情况", desc: "保留模板汇总公式，按主SKU分类汇总净需求明细。" },
+          { id: "mid_net_demand.stock", name: "千易库存数据", desc: "按站点批次筛选16列；保留主SKU、站点、未收到库存等公式。" },
+          { id: "mid_net_demand.receiving", name: "千易入库单_收货中", desc: "按收货仓筛选48列；批注含“点完”时，差异数据=MAX(预计数量-仓库上架数量,0)。" },
+          { id: "mid_net_demand.share", name: "销量占比", desc: "保留模板历史窗口和颜色/尺码销量占比公式。" },
+          { id: "mid_net_demand.sku", name: "SKU信息表", desc: "从映射表按值整表刷新。" },
+          { id: "mid_net_demand.warehouse", name: "仓库信息表", desc: "从映射表按值整表刷新。" },
+          { id: "mid_net_demand.inbound", name: "入库单信息", desc: "每次清空后按站点批次同步六列静态值，保留仓库。" },
+          { id: "mid_net_demand.batch", name: "在途批次数据", desc: "按站点批次复制对应SKU批次表的17列缓存值。" }
+        ]
+      },
+      {
+        id: "mid_batch",
+        lane: "middle",
+        title: "数据中间表 / 在途批次表",
+        path: "数据中间表/在途批次表/",
+        file: "在途批次表_YYYY年MM月.xlsx",
+        view: "monthly",
+        sheets: [
+          { id: "mid_batch.inNew", name: "千易入库单_新建", desc: "每月 1 号新建入库单，补充站点和飞书到仓时间。" },
+          { id: "mid_batch.aUnshipped", name: "A未发数据表", desc: "飞书人工维护的未发货数据，作为在途批次补充来源。" },
+          { id: "mid_batch.order", name: "入库单表", desc: "合并新建入库单与 A 未发数据，形成统一在途明细。" },
+          { id: "mid_batch.skuBatchTH", name: "SKU批次表_泰国", desc: "按泰国站点和 SKU 取前 4 个在途批次。" },
+          { id: "mid_batch.skuBatchID1", name: "SKU批次表_印尼1", desc: "按印尼1仓和 SKU 取前 4 个在途批次。" },
+          { id: "mid_batch.skuBatchID2", name: "SKU批次表_印尼2", desc: "按印尼2仓和 SKU 取前 4 个在途批次。" },
+          { id: "mid_batch.skuBatchMY", name: "SKU批次表_马来", desc: "按马来站点和 SKU 取前 4 个在途批次。" },
+          { id: "mid_batch.skuBatchPH", name: "SKU批次表_菲律宾", desc: "按菲律宾站点和 SKU 取前 4 个在途批次。" },
+          { id: "mid_batch.feishu", name: "飞书-入库单跟进表", desc: "提供入库单发货、到仓和到货状态字段。" },
+          { id: "mid_batch.skuMap", name: "SKU信息表", desc: "映射表原样进入在途批次表。" },
+          { id: "mid_batch.storeMap", name: "店铺信息表", desc: "映射店铺、运营、站点。" },
+          { id: "mid_batch.warehouseMap", name: "仓库信息表", desc: "映射仓库与站点。" }
+        ]
+      }
+    ];
+
+    const resultEntities = [
+      {
+        id: "res_daily",
+        lane: "result",
+        title: "结果表 / 每日销售及库存跟进表",
+        file: "每日销售及库存跟进表.xlsx",
+        view: "daily",
+        sheets: [
+          { id: "res_daily.sku", name: "SKU日销", desc: "粒度以 SKU数据口径为准；同步缓存并保留 12 个派生公式。" },
+          { id: "res_daily.cat", name: "类目日销", desc: "粒度以类目数据口径为准；从结果 SKU日销内部公式汇总。" },
+          { id: "res_daily.op", name: "运营日销", desc: "粒度以运营数据口径为准；同步运营中间表销量缓存。" }
+        ]
+      },
+      {
+        id: "res_month",
+        lane: "result",
+        title: "结果表 / 运营大盘数据监控表",
+        file: "运营大盘数据监控表.xlsx",
+        view: "monthly",
+        sheets: [
+          { id: "res_month.grade", name: "产品动态分级表", desc: "引用A1平均销售额占比并综合评分，向四张业务表提供最终定级。" },
+          { id: "res_month.a1", name: "A1类目销售数据表", desc: "同步月度A1缓存并维护从晚到早的历史指标块。" },
+          { id: "res_month.a2", name: "A2类目SKU销售监控表", desc: "同步月度A2缓存，保留站点+产品编码历史。" },
+          { id: "res_month.b1", name: "B1运营类目销售表", desc: "同步B1实际指标，目标销量和目标销售额从结果B2汇总。" },
+          { id: "res_month.b2", name: "B2店铺类目销售表", desc: "同步B2实际指标，保留手填目标并计算完成率和环比。" }
+        ]
+      }
+    ];
+
+    const relations = [
+      ["src_sales.sheet", "mid_daily.sales", "每日取D-1商品销售统计；新增销售sku数量VALUE。"],
+      ["src_stock.sheet", "mid_daily.stock", "日取对应日库存查询；映射站点与主SKU分类。"],
+      ["src_in_new.sheet", "mid_daily.inNew", "日取对应日新建入库单；补站点、到仓、到货天数。"],
+      ["src_in_receiving.sheet", "mid_daily.inReceiving", "日取对应日收货中入库单；计算未收到库存。"],
+      ["src_feishu.sheet", "mid_daily.feishu", "飞书入库单跟进表进入每日中间表。"],
+      ["src_map.sku", "mid_daily.skuMap", "映射表原样进入。"],
+      ["src_map.store", "mid_daily.storeMap", "映射表原样进入。"],
+      ["src_map.warehouse", "mid_daily.warehouseMap", "映射表原样进入。"],
+      ["mid_daily.skuMap", "mid_daily.sales", "按系统sku映射主SKU分类。"],
+      ["mid_daily.storeMap", "mid_daily.sales", "按店铺映射运营与站点。"],
+      ["mid_daily.skuMap", "mid_daily.stock", "按商品编码映射主SKU分类。"],
+      ["mid_daily.warehouseMap", "mid_daily.stock", "按仓库映射中文/英文站点。"],
+      ["mid_daily.warehouseMap", "mid_daily.inNew", "按收货仓映射中文/英文站点。"],
+      ["mid_daily.feishu", "mid_daily.inNew", "按入库单号补发货时间、到仓时间、到货天数。"],
+      ["mid_daily.inReceiving", "mid_daily.stock", "按商品编码汇总未收到库存。"],
+      ["src_daily_grain.sku", "mid_daily.skuScope", "复制指定维度字段；保留管理表行集合和顺序。"],
+      ["src_daily_grain.cat", "mid_daily.catScope", "复制指定维度字段；保留管理表行集合和顺序。"],
+      ["src_daily_grain.op", "mid_daily.opScope", "复制指定维度字段；保留管理表行集合和顺序。"],
+      ["mid_daily.skuScope", "mid_daily.skuMid", "提供完整站点+SKU计算口径。"],
+      ["mid_daily.catScope", "mid_daily.catMid", "提供完整站点+主SKU分类计算口径。"],
+      ["mid_daily.sales", "mid_daily.skuMid", "按站点+SKU 汇总D-1销量。"],
+      ["mid_daily.stock", "mid_daily.skuMid", "按站点+SKU 汇总当日库存。"],
+      ["mid_daily.inNew", "mid_daily.skuMid", "按到货天数区间汇总在途数量。"],
+      ["mid_daily.skuMap", "mid_daily.skuMid", "按 SKU 补货值、海运、售价。"],
+      ["mid_daily.skuMid", "mid_daily.catMid", "按站点+主SKU分类聚合。"],
+      ["mid_daily.sales", "mid_daily.opMid", "按站点+运营+主SKU分类汇总销量。"],
+      ["mid_daily.opScope", "mid_daily.opMid", "提供运营聚合口径。"],
+      ["mid_daily.skuScope", "res_daily.sku", "权威行集合、排序和产品维度。"],
+      ["mid_daily.catScope", "res_daily.cat", "权威行集合、排序和类目维度。"],
+      ["mid_daily.opScope", "res_daily.op", "权威行集合、排序和运营维度。"],
+      ["mid_daily.skuMid", "res_daily.sku", "同步供应商、四个单价、刷新指标和日期销量缓存。"],
+      ["mid_daily.catMid", "res_daily.cat", "仅同步供应商缓存；类目数值由结果 SKU日销汇总。"],
+      ["mid_daily.opMid", "res_daily.op", "同步当前日期销量缓存。"],
+      ["res_daily.sku", "res_daily.cat", "SUMIFS汇总基础指标、30/60/90天指标及全部日期销量。"],
+
+      ["src_sales.sheet", "mid_month.sales", "月取对应月商品销售统计。"],
+      ["src_stock.sheet", "mid_month.stock", "月度取每月 1 号库存快照。"],
+      ["src_in_receiving.sheet", "mid_month.inReceiving", "月度取每月 1 号收货中入库单快照。"],
+      ["src_net_demand.demand", "mid_net_demand.demand", "复制模板产品粒度、公式结构和人工字段。"],
+      ["src_net_demand.target", "mid_net_demand.target", "保留人工目标并校验M至M+5目标月份。"],
+      ["src_net_demand.value", "mid_net_demand.value", "保留货值汇总公式和样式。"],
+      ["src_net_demand.stock", "mid_net_demand.stock", "保留16列结构、公式列样式与字段顺序。"],
+      ["src_net_demand.receiving", "mid_net_demand.receiving", "保留48列结构和站点公式样式；差异数据由脚本按字段名生成。"],
+      ["src_net_demand.share", "mid_net_demand.share", "保留历史销量窗口和占比公式。"],
+      ["src_net_demand.sku", "mid_net_demand.sku", "保留SKU信息表结构。"],
+      ["src_net_demand.warehouse", "mid_net_demand.warehouse", "保留仓库信息表结构。"],
+      ["src_net_demand.inbound", "mid_net_demand.inbound", "保留六列结构和格式。"],
+      ["src_net_demand.batch", "mid_net_demand.batch", "保留17列前四批结构和格式。"],
+      ["src_stock.sheet", "mid_net_demand.stock", "取M下一自然月1日库存并按站点批次筛选。"],
+      ["src_in_receiving.sheet", "mid_net_demand.receiving", "取M下一自然月1日收货中数据并按收货仓筛选。"],
+      ["src_map.sku", "mid_net_demand.sku", "SKU信息表按值整表刷新。"],
+      ["src_map.warehouse", "mid_net_demand.warehouse", "仓库信息表按值整表刷新。"],
+      ["mid_net_demand.warehouse", "mid_net_demand.receiving", "按收货仓映射站点。"],
+      ["mid_net_demand.warehouse", "mid_net_demand.stock", "按仓库映射站点并验证站点批次。"],
+      ["mid_net_demand.sku", "mid_net_demand.stock", "按SKU映射主SKU分类。"],
+      ["mid_net_demand.sku", "mid_net_demand.demand", "提供供应商、产品维度和成本字段。"],
+      ["mid_net_demand.receiving", "mid_net_demand.stock", "按商品编码+仓库汇总未收到库存。"],
+      ["mid_net_demand.target", "mid_net_demand.demand", "P:U按M至M+5真实目标列生成公式。"],
+      ["mid_net_demand.stock", "mid_net_demand.demand", "提供可售、实际在途和销量窗口。"],
+      ["mid_net_demand.share", "mid_net_demand.demand", "提供颜色和尺码销量占比。"],
+      ["mid_net_demand.batch", "mid_net_demand.demand", "提供前四批数量和预计到货日期。"],
+      ["mid_net_demand.inbound", "mid_net_demand.demand", "按SKU汇总A未发数量及货值。"],
+      ["mid_net_demand.demand", "mid_net_demand.value", "按主SKU分类汇总货值。"],
+      ["mid_net_demand.demand", "mid_month.target", "读取Excel缓存，抽取类目/SKU目标、批次和周转系数。"],
+      ["src_map.sku", "mid_month.skuMap", "映射表原样进入。"],
+      ["src_map.store", "mid_month.storeMap", "映射表原样进入。"],
+      ["src_map.warehouse", "mid_month.warehouseMap", "映射表原样进入。"],
+      ["src_month_grain.a1", "mid_month.a1Scope", "整表复制A1管理粒度、产品维度和排序。"],
+      ["src_month_grain.a2", "mid_month.a2Scope", "整表复制A2管理粒度、产品维度和排序。"],
+      ["src_month_grain.b1", "mid_month.b1Scope", "整表复制B1运营类目粒度和排序。"],
+      ["src_month_grain.b2", "mid_month.b2Scope", "整表复制B2店铺类目粒度和排序。"],
+      ["mid_month.skuMap", "mid_month.sales", "映射主SKU分类。"],
+      ["mid_month.storeMap", "mid_month.sales", "映射运营与站点。"],
+      ["mid_month.warehouseMap", "mid_month.stock", "映射仓库对应站点。"],
+      ["mid_month.inReceiving", "mid_month.stock", "计算未收到库存。"],
+      ["mid_month.a1Scope", "mid_month.a1Category", "提供A1完整粒度、维度字段和排序。"],
+      ["mid_month.a2Scope", "mid_month.a2Sku", "提供A2完整SKU粒度、维度字段和排序。"],
+      ["mid_month.b1Scope", "mid_month.b1Operator", "提供完整运营类目粒度。"],
+      ["mid_month.b2Scope", "mid_month.b2Store", "提供完整店铺类目粒度。"],
+      ["mid_month.sales", "mid_month.a1Category", "按站点+主SKU分类汇总销量和销售额。"],
+      ["mid_month.stock", "mid_month.a1Category", "按站点+主SKU分类汇总实际库存。"],
+      ["mid_month.target", "mid_month.a1Category", "匹配计划目标和周转系数。"],
+      ["mid_month.sales", "mid_month.a2Sku", "按站点+产品编码汇总实际销量。"],
+      ["mid_month.stock", "mid_month.a2Sku", "按站点+产品编码汇总实际库存。"],
+      ["mid_month.target", "mid_month.a2Sku", "匹配SKU计划目标和SKU周转系数。"],
+      ["mid_month.sales", "mid_month.b1Operator", "按站点+运营+主SKU分类汇总实际销量/销售额。"],
+      ["mid_month.sales", "mid_month.b2Store", "按站点+店铺+主SKU分类汇总实际销量/销售额/客单价。"],
+      ["mid_month.stock", "mid_month.b2Store", "按站点+主SKU分类汇总实际库存。"],
+      ["mid_month.a1Category", "res_month.a1", "同步A1维度和当月指标缓存。"],
+      ["mid_month.a2Sku", "res_month.a2", "同步A2维度和当月指标缓存。"],
+      ["mid_month.b1Operator", "res_month.b1", "同步B1当月实际销量、销售额和占比。"],
+      ["mid_month.b2Store", "res_month.b2", "同步B2当月库存、销量、客单价和销售额。"],
+      ["res_month.a1", "res_month.grade", "按站点+产品汇总平均销售额占比参与动态评分。"],
+      ["res_month.grade", "res_month.a1", "按站点+主SKU分类回填最终定级。"],
+      ["res_month.grade", "res_month.a2", "按站点+主SKU分类回填最终定级。"],
+      ["res_month.grade", "res_month.b1", "按站点+主SKU分类回填最终定级。"],
+      ["res_month.grade", "res_month.b2", "按站点+主SKU分类回填最终定级。"],
+      ["res_month.b2", "res_month.b1", "按站点+运营+主SKU分类汇总目标销量和目标销售额。"],
+
+      ["src_in_new.sheet", "mid_batch.inNew", "月度取每月 1 号新建入库单。"],
+      ["src_a_unshipped.sheet", "mid_batch.aUnshipped", "月度取 A未发数据表。"],
+      ["src_feishu.sheet", "mid_batch.feishu", "月度取每月 1 号入库单跟进表。"],
+      ["src_map.sku", "mid_batch.skuMap", "映射表原样进入。"],
+      ["src_map.store", "mid_batch.storeMap", "映射表原样进入。"],
+      ["src_map.warehouse", "mid_batch.warehouseMap", "映射表原样进入。"],
+      ["mid_batch.warehouseMap", "mid_batch.inNew", "按收货仓映射站点。"],
+      ["mid_batch.feishu", "mid_batch.inNew", "按入库单号补发货和到仓时间。"],
+      ["mid_batch.inNew", "mid_batch.order", "新建入库单进入统一入库单表。"],
+      ["mid_batch.aUnshipped", "mid_batch.order", "A未发数据进入统一入库单表。"],
+      ["mid_batch.feishu", "mid_batch.order", "补充入库单时间字段。"],
+      ["mid_batch.skuMap", "mid_batch.skuBatchTH", "提供 SKU 清单和维度。"],
+      ["mid_batch.skuMap", "mid_batch.skuBatchID1", "提供 SKU 清单和维度。"],
+      ["mid_batch.skuMap", "mid_batch.skuBatchID2", "提供 SKU 清单和维度。"],
+      ["mid_batch.skuMap", "mid_batch.skuBatchMY", "提供 SKU 清单和维度。"],
+      ["mid_batch.skuMap", "mid_batch.skuBatchPH", "提供 SKU 清单和维度。"],
+      ["mid_batch.order", "mid_batch.skuBatchTH", "按泰国站点+SKU取前4个批次。"],
+      ["mid_batch.order", "mid_batch.skuBatchID1", "按站点_批次=印尼1和SKU取前4个批次。"],
+      ["mid_batch.order", "mid_batch.skuBatchID2", "按站点_批次=印尼2和SKU取前4个批次。"],
+      ["mid_batch.order", "mid_batch.skuBatchMY", "按马来站点+SKU取前4个批次。"],
+      ["mid_batch.order", "mid_batch.skuBatchPH", "按菲律宾站点+SKU取前4个批次。"],
+      ["mid_batch.order", "mid_net_demand.inbound", "每次清空后按站点批次同步六列静态值。"],
+      ["mid_batch.skuBatchTH", "mid_net_demand.batch", "泰国前四批缓存进入泰国净需求表。"],
+      ["mid_batch.skuBatchID1", "mid_net_demand.batch", "印尼1前四批缓存进入印尼1净需求表。"],
+      ["mid_batch.skuBatchID2", "mid_net_demand.batch", "印尼2前四批缓存进入印尼2净需求表。"],
+      ["mid_batch.skuBatchMY", "mid_net_demand.batch", "马来前四批缓存进入马来净需求表。"],
+      ["mid_batch.skuBatchPH", "mid_net_demand.batch", "菲律宾前四批缓存进入菲律宾净需求表。"]
+    ].map(([from, to, label]) => ({ from, to, label }));
+
+    const details = {
+      "src_month_grain.a1": {
+        op: "A1月度管理粒度的唯一权威来源。第1行为表头，第2行开始为有效粒度；生成时整表复制，不从销售明细反推。",
+        keep: "供应商、站点（中文）、站点（英文）、产品分级、产品主类/材质、主SKU分类及原始行顺序。",
+        remove: "仅忽略有效数据区末尾全空行；不去重、不改名、不补值。",
+        add: []
+      },
+      "src_month_grain.a2": {
+        op: "A2月度SKU管理粒度的唯一权威来源，完整复制到A2数据口径表。",
+        keep: "供应商、站点中英文、产品分级、产品主类/材质、主SKU分类、产品编码、产品名称及原始行顺序。",
+        remove: "仅忽略有效数据区末尾全空行；不使用现有A2主表或结果表反推。",
+        add: []
+      },
+      "src_month_grain.b1": {
+        op: "B1月度运营类目管理粒度的唯一权威来源，完整复制到B1数据口径表。",
+        keep: "站点（中文）、站点（英文）、产品分级、产品主类/材质、类目、运营及原始行顺序。",
+        remove: "仅忽略有效数据区末尾全空行；不去重。后续将类目对应到主表主SKU分类。",
+        add: []
+      },
+      "src_month_grain.b2": {
+        op: "B2月度店铺类目管理粒度的唯一权威来源；程序需兼容来源Sheet名末尾空格。",
+        keep: "站点、店铺名、运营、产品分级、产品主类/材质、主SKU分类及原始行顺序。",
+        remove: "仅忽略有效数据区末尾全空行；不去重、不重排。",
+        add: []
+      },
+      "src_daily_grain.sku": {
+        op: "作为 SKU 日销管理粒度源表，第2行为字段表头，第3行开始为有效数据；脚本读取最新版本并校验 `站点(英文)+产品编码` 不重复。",
+        keep: "供应商、站点中英文、产品分级、产品主类/材质、主SKU分类、产品编码、产品名称及源表其他管理字段。",
+        remove: "进入 SKU日销数据口径时，仅抽取当前口径表规定的7个维度字段。",
+        add: []
+      },
+      "src_daily_grain.cat": {
+        op: "作为类目日销管理粒度源表，第2行为字段表头，第3行开始为有效数据；脚本校验 `站点(英文)+主SKU分类` 不重复。",
+        keep: "供应商、站点中英文、产品分级、产品主类/材质、主SKU分类及源表管理字段。",
+        remove: "进入 类目日销数据口径时，仅抽取当前口径表规定的5个维度字段。",
+        add: []
+      },
+      "src_daily_grain.op": {
+        op: "作为运营日销管理粒度源表，第2行为字段表头，第3行开始为有效数据；脚本校验 `站点(英文)+运营+主SKU分类` 不重复。",
+        keep: "站点中英文、产品分级、产品主类/材质、主SKU分类、运营及历史销量字段。",
+        remove: "进入 运营日销数据口径时，仅抽取当前口径表规定的6个维度字段。",
+        add: []
+      },
+      "mid_daily.skuScope": {
+        op: "从最新数据粒度表 / SKU日销（管理）按源顺序复制指定字段，不再由商品销售统计去重生成；同时作为 SKU中间指标和结果表 SKU日销的权威粒度。",
+        keep: "站点(中文)、站点(英文)、产品分级、产品主类/材质、主SKU分类、产品编码、产品名称。",
+        remove: "不复制供应商、历史销量和管理表中的指标列。",
+        add: []
+      },
+      "mid_daily.catScope": {
+        op: "从最新数据粒度表 / 类目日销（管理）按源顺序复制指定字段，不再由商品销售统计去重生成；同时作为类目中间指标和结果表类目日销的权威粒度。",
+        keep: "站点(中文)、站点(英文)、产品分级、产品主类/材质、主SKU分类。",
+        remove: "不复制供应商、历史销量和管理表中的指标列。",
+        add: []
+      },
+      "mid_daily.opScope": {
+        op: "从最新数据粒度表 / 运营日销按源顺序复制指定字段，不再由商品销售统计去重生成；同时作为运营中间指标和结果表运营日销的权威粒度。",
+        keep: "站点(中文)、站点(英文)、产品分级、产品主类/材质、主SKU分类、运营。",
+        remove: "不复制历史销量和管理表中的其他指标列。",
+        add: []
+      },
+      "mid_daily.skuMid": {
+        op: "以 SKU日销数据口径的完整 `站点+SKU` 行集合和顺序逐行生成；引用销售、库存、入库单和 SKU信息表，所有公式经 Excel 全量计算后保存缓存。",
+        keep: "供应商、站点、产品分级、产品主类/材质、主SKU分类、SKU、四个单价、当日库存、月销量、可售月数、30/60/90天在途与派生金额、库存状况、YYYY.MM.DD销量。",
+        remove: "删除源销售、库存、入库单的明细过程字段，只保留 SKU 粒度结果。",
+        add: [
+          ["供应商", "SKU信息表", "XLOOKUP(SKU, SKU信息表!SKU列, 供应商列)"],
+          ["产品分级", "本sheet", "置空"],
+          ["产品主类/材质", "SKU信息表", "XLOOKUP(SKU, SKU信息表!SKU列, 产品主类/材质列)"],
+          ["货值单价", "SKU信息表", "XLOOKUP(SKU, SKU信息表!SKU列, 成本列)"],
+          ["当日库存", "千易库存数据", "按SKU+站点匹配库存可用量"],
+          ["月销量", "千易库存数据", "按SKU+站点匹配30天销量"],
+          ["可售月数", "本sheet", "IFERROR(当日库存/月销量,0)"],
+          ["30天内到货在途数量", "千易库存数据", "按SKU+站点匹配实际在途量"],
+          ["30天货值/海运/销售额/账单收入", "本sheet", "30天在途数量*对应单价"],
+          ["60天内到货在途数量", "千易入库单_新建", "SUMIFS(预计数量VALUE, 到货天数>=0且<=60, 站点, SKU)"],
+          ["60天货值/海运/销售额/账单收入", "本sheet", "60天在途数量*对应单价"],
+          ["90天在途数量", "千易入库单_新建", "SUMIFS(预计数量VALUE, 到货天数>60, 站点, SKU)"],
+          ["90天货值/海运/销售额/账单收入", "本sheet", "90天在途数量*对应单价"],
+          ["库存状况", "本sheet", "置空"],
+          ["YYYY.MM.DD销量", "千易商品销售统计", "按D-1日期字段；SUMIFS(销售sku数量VALUE, 站点, SKU)"]
+        ]
+      },
+      "mid_daily.catMid": {
+        op: "以 类目日销数据口径的完整 `站点+主SKU分类` 行集合和顺序生成，从 SKU日销-中间汇总各项指标，并从 SKU信息表计算供应商和产品材质。",
+        keep: "供应商、站点、产品分级、产品主类/材质、主SKU分类、库存/月销/在途/货值/销售额/账单收入聚合指标、库存状况、YYYY.MM.DD销量。",
+        remove: "删除 SKU 粒度字段，如 SKU、商品编码、店铺、仓库等明细维度。",
+        add: [
+          ["供应商", "SKU信息表", "XLOOKUP(主SKU分类, SKU信息表!主SKU分类列, 供应商列)"],
+          ["产品分级", "本sheet", "置空"],
+          ["产品主类/材质", "SKU信息表", "XLOOKUP(主SKU分类, SKU信息表, 产品主类/材质列)"],
+          ["当日库存/月销量", "SKU日销-中间", "SUMIFS(对应指标, 站点, 主SKU分类)"],
+          ["可售月数", "本sheet", "IFERROR(当日库存/月销量,0)"],
+          ["30天指标", "SKU日销-中间", "按站点+主SKU分类汇总30天在途、货值、销售额、账单收入"],
+          ["60天指标", "SKU日销-中间", "按站点+主SKU分类汇总60天在途、货值、销售额、账单收入"],
+          ["90天指标", "SKU日销-中间", "按站点+主SKU分类汇总90天在途、货值、销售额、账单收入"],
+          ["库存状况", "本sheet", "置空"],
+          ["YYYY.MM.DD销量", "SKU日销-中间", "SUMIFS(同名日期销量, 站点, 主SKU分类)"]
+        ]
+      },
+      "mid_daily.opMid": {
+        op: "以运营日销数据口径形成 `站点+运营+主SKU分类` 聚合维度，再从千易商品销售统计汇总销量。空白逻辑字段体现为 `置空`。",
+        keep: "站点、产品分级、产品主类/材质、主SKU分类、运营、YYYY.MM.DD销量。",
+        remove: "删除 SKU、仓库、库存、在途、货值等非运营日销字段。",
+        add: [
+          ["产品分级", "本sheet", "置空"],
+          ["产品主类/材质", "SKU信息表", "XLOOKUP(主SKU分类, SKU信息表, 产品主类/材质列)"],
+          ["YYYY.MM.DD销量", "千易商品销售统计", "按D-1日期字段；SUMIFS(销售sku数量VALUE, 站点, 运营, 主SKU分类)"]
+        ]
+      },
+      "mid_daily.sales": {
+        keep: "千易商品销售统计原始字段，并保留系统sku、店铺、运营、站点、仓库、销售sku数量等销售明细。",
+        remove: "未发现额外删除；主要为原表字段追加映射字段和数值化字段。",
+        add: [
+          ["主SKU分类", "SKU信息表", "VLOOKUP(系统sku, SKU信息表!F:L, 7, 0)"],
+          ["运营", "店铺信息表", "VLOOKUP(店铺, 店铺信息表!B:D, 2, 0)"],
+          ["销售sku数量VALUE", "本sheet", "销售sku数量 + 0"]
+        ]
+      },
+      "mid_daily.stock": {
+        keep: "商品编码、商品名称、仓库、可用量、在途量、实际在途量、库存合计、3/7/15/30/60/90天销量、新建入库单数量、总在途（含新建入库单）。",
+        remove: "未进入日销分析的库存原始辅助字段不再向后传递。",
+        add: [
+          ["主SKU分类", "SKU信息表", "VLOOKUP(商品编码, SKU信息表!F:L, 7, 0)"],
+          ["站点（中文）", "仓库信息表", "VLOOKUP(仓库, 仓库信息表!A:C, 2, 0)"],
+          ["站点（英文）", "仓库信息表", "VLOOKUP(仓库, 仓库信息表!A:C, 3, 0)"],
+          ["未收到库存", "千易入库单_收货中", "SUMIFS(未收到库存, 商品编码, 收货仓=当前仓库)"],
+          ["实际在途量", "本sheet", "IF(在途量-未收到库存<0,0,在途量-未收到库存)"],
+          ["库存合计", "本sheet", "实际在途量+可用量"],
+          ["新建入库单数量", "千易入库单_新建", "SUMIFS(预计数量VALUE, 收货仓=仓库, 商品编码)"],
+          ["总在途（含新建入库单）", "本sheet", "实际在途量+新建入库单数量"]
+        ]
+      },
+      "mid_daily.inNew": {
+        keep: "入库单号、收货仓、商品编码、预计数量、发货时间、到仓时间、到仓时间整合、到货天数。",
+        remove: "删除或不向后传递入库单原始明细中与日销计算无关字段。",
+        add: [
+          ["站点（中文）", "仓库信息表", "VLOOKUP(收货仓, 仓库信息表!A:C, 2, 0)"],
+          ["站点（英文）", "仓库信息表", "VLOOKUP(收货仓, 仓库信息表!A:C, 3, 0)"],
+          ["预计数量VALUE", "本sheet", "预计数量 + 0"],
+          ["发货/到仓/整合时间", "飞书-入库单跟进表", "VLOOKUP(入库单号, 飞书跟进表, 对应列)"],
+          ["到货天数", "飞书-入库单跟进表", "VLOOKUP 或 DATEDIF 后的跟进表结果"]
+        ]
+      },
+      "mid_daily.inReceiving": {
+        keep: "入库单收货中原始明细。",
+        remove: "不作为结果表直接输出，仅被库存和在途计算引用。",
+        add: [
+          ["未收到库存", "本sheet", "IF(批注包含“点完”, MAX(预计数量-仓库上架数量,0), 0)"]
+        ]
+      },
+      "mid_daily.feishu": {
+        keep: "仓库、站点、入库单号、发货时间、到仓时间、到仓时间整合、是否到货、到货天数。",
+        remove: "删除空白辅助列。",
+        add: [
+          ["到货天数", "本sheet", "IFERROR(到仓时间整合-D-1基准日期,空白)"]
+        ]
+      },
+      "res_daily.sku": {
+        op: "先按 SKU日销数据口径全量对齐 `站点+SKU` 的行集合、顺序及六个产品维度，再从 SKU日销-中间同步供应商、四个单价、刷新指标和当前日期销量缓存；结果表内部保留12个派生金额公式。",
+        keep: "历史日期销量、库存状况和既有样式；粒度与维度以 SKU日销数据口径为准，供应商及指标以中间表本次缓存为准。",
+        remove: "不再从结果表内部 SKU信息表查询四个单价；不保留中间表外部引用公式，不新增数据口径表之外的粒度。",
+        add: [
+          ["六个维度字段", "SKU日销数据口径", "按站点(英文)+产品编码逐行静态写入并保持顺序"],
+          ["供应商", "SKU日销-中间", "读取 Excel 公式缓存静态值"],
+          ["四个单价", "SKU日销-中间", "读取货值/海运/销售额/账单收入单价缓存静态值"],
+          ["库存/月销/在途数量", "SKU日销-中间", "读取本次 Excel 计算后的缓存静态值"],
+          ["30/60/90天派生金额", "本sheet", "对应在途数量 × 对应静态单价；保留12个内部公式"],
+          ["库存状况", "SKU日销-中间", "置空"],
+          ["YYYY.MM.DD销量", "SKU日销-中间", "读取D-1同名销量列缓存值，插入历史销量最左侧"],
+          ["历史日期销量", "上一版结果表", "按站点+SKU迁移并保持从晚到早"]
+        ]
+      },
+      "res_daily.cat": {
+        op: "先按 类目日销数据口径全量对齐 `站点+主SKU分类` 的行集合、顺序及产品维度；仅从 类目日销-中间同步供应商，其余基础指标和全部日期销量均在结果表内部从 SKU日销 使用 SUMIFS 汇总。",
+        keep: "历史日期销量及涨幅、库存状况和既有样式；供应商来自类目中间表缓存，数值指标来自结果表 SKU日销内部公式。",
+        remove: "不直接复制 类目日销-中间 的指标缓存，不保留外部工作簿公式，也不新增数据口径表之外的粒度。",
+        add: [
+          ["四个维度字段", "类目日销数据口径", "按站点(英文)+主SKU分类逐行静态写入并保持顺序"],
+          ["供应商", "类目日销-中间", "读取 Excel 公式缓存静态值"],
+          ["基础及30/60/90天指标", "结果表 / SKU日销", "SUMIFS(同名指标, 站点, 主SKU分类)"],
+          ["可售月数", "本sheet", "IFERROR(当日库存/月销量,0)"],
+          ["库存状况", "类目日销-中间", "置空"],
+          ["YYYY.MM.DD销量", "结果表 / SKU日销", "SUMIFS(同名日期销量, 站点, 主SKU分类)"],
+          ["YYYY.MM.DD涨幅", "本sheet历史销量", "按当日销量与上一日销量计算涨幅；模板口径为 `(当日销量-上一日销量)/当日销量`"],
+          ["历史日期销量", "上一版结果表", "保持从晚到早，并逐列刷新内部 SUMIFS 公式"]
+        ]
+      },
+      "res_daily.op": {
+        op: "先按 运营日销数据口径全量对齐 `站点+运营+主SKU分类` 的行集合、顺序及维度，再从 运营日销-中间同步当前日期销量缓存。",
+        keep: "数据口径中的五个维度和结果表已有历史日期销量列。",
+        remove: "不新增数据口径表之外的粒度；不保留库存、在途、货值、销售额、账单收入等非运营日销指标。",
+        add: [
+          ["五个维度字段", "运营日销数据口径", "按站点(英文)+运营+主SKU分类逐行静态写入并保持顺序"],
+          ["YYYY.MM.DD销量", "运营日销-中间", "读取D-1同名销量列缓存值，插入历史销量最左侧"],
+          ["历史日期销量", "上一版结果表", "按粒度键迁移并保持从晚到早"]
+        ]
+      },
+      "mid_month.sales": {
+        op: "复制销售归属月商品销售统计，保留原始明细并追加可计算数值列和映射维度；所有下游聚合均按字段名定位。",
+        keep: "月度商品销售统计原始字段和销售指标。",
+        remove: "无明显删除；主要新增月份、季度与映射字段。",
+        add: [
+          ["月份", "时间范围", "TEXT(DATE(LEFT(时间范围,4),MID(时间范围,5,2),1),\"yyyy年mm月\")"],
+          ["季度", "月份", "按月份换算第几季度"],
+          ["主SKU分类/运营/站点(中文)", "SKU信息表/店铺信息表/仓库信息表", "VLOOKUP 映射"],
+          ["销售额VALUE", "销售额", "销售额+0"],
+          ["销售sku数量VALUE", "销售sku数量", "销售sku数量+0"],
+          ["平均售价VALUE", "平均售价", "平均售价+0"],
+          ["日期Value", "时间范围", "DATE(年,月,1)"]
+        ]
+      },
+      "mid_month.inReceiving": {
+        op: "复制每月1号收货中入库单；仅在批注文本包含“点完”时计算差异数据，供库存表汇总未收到库存。",
+        keep: "入库单、商品编码、预计数量、已收良品量、状态及源明细字段。",
+        remove: "无业务字段删除。",
+        add: [["差异数据", "本sheet", "IF(ISNUMBER(FIND(\"点完\",批注字段)),MAX(预计数量-仓库上架数量,0),0)"]]
+      },
+      "mid_month.stock": {
+        op: "复制每月1号库存快照，映射SKU与站点，结合收货中差异计算实际在途量和库存合计。",
+        keep: "每月 1 号库存快照字段。",
+        remove: "不删除源库存字段。",
+        add: [
+          ["月份/季度", "千易商品销售统计", "引用月度销售统计的月份、季度"],
+          ["主SKU分类", "SKU信息表", "VLOOKUP(商品编码, SKU信息表)"],
+          ["站点（中文）", "仓库信息表", "VLOOKUP(仓库, 仓库信息表)"],
+          ["未收到库存", "千易入库单_收货中", "SUMIFS(差异数据, 商品编码, 当前商品编码)"],
+          ["实际在途量", "本sheet", "MAX(在途量-未收到库存,0)"],
+          ["库存合计", "本sheet", "实际在途量+可用量"]
+        ]
+      },
+      "mid_month.a1Scope": {
+        op: "从@数据粒度表_运营大盘数据监控表 / A1类目销售数据表（粒度）整表复制，作为A1唯一权威粒度来源。",
+        keep: "供应商、站点中英文、产品分级、产品主类/材质、主SKU分类。",
+        remove: "仅忽略来源末尾全空行；不从销售明细推导、不去重、不重排。",
+        add: []
+      },
+      "mid_month.a2Scope": {
+        op: "从@数据粒度表_运营大盘数据监控表 / A2类目SKU销售监控表（粒度）整表复制，作为A2唯一权威粒度来源。",
+        keep: "供应商、站点中英文、产品分级、产品主类/材质、主SKU分类、产品编码、产品名称。",
+        remove: "仅忽略来源末尾全空行；不使用现有A2主表或结果表反推。",
+        add: []
+      },
+      "mid_month.b1Scope": {
+        op: "从@数据粒度表_运营大盘数据监控表 / B1运营类目销售表（粒度）整表复制；类目字段在B1主表中对应主SKU分类。",
+        keep: "站点（中文）、站点（英文）、产品分级、产品主类/材质、类目、运营。",
+        remove: "仅忽略来源末尾全空行；不从销售明细去重生成。",
+        add: []
+      },
+      "mid_month.b2Scope": {
+        op: "从@数据粒度表_运营大盘数据监控表 / B2店铺类目销售数据（粒度）整表复制，保留来源排序。",
+        keep: "站点、店铺名、运营、产品分级、产品主类/材质、主SKU分类。",
+        remove: "仅忽略来源末尾全空行；不从销售明细去重生成。",
+        add: []
+      },
+      "mid_month.a1Category": {
+        op: "以A1类目销售数据口径的完整行集合和顺序为基线，引用月度销售、库存快照和净需求目标，逐行计算销售归属月指标。",
+        keep: "供应商、站点、产品分级、产品主类/材质、主SKU分类、月份、季度、销量、销售额、销售额占比、计划目标、实际库存、备货准确率、周转系数。",
+        remove: "不保留销售明细中的 SKU、订单、店铺、仓库等过程字段，也不保留净需求表里的库存过程列和在途批次过程列。",
+        add: [
+          ["供应商/站点/产品分级/产品主类/材质/主SKU分类", "A1类目销售数据口径", "逐行复制管理维度并保持来源顺序"],
+          ["月份/季度", "千易商品销售统计", "引用销售归属月，不加1个月"],
+          ["销量/销售额", "千易商品销售统计", "SUMIFS(销售指标, 站点, 主SKU分类, 月份)"],
+          ["销售额占比", "本sheet", "当前类目销售额 / 当前站点销售额合计"],
+          ["计划目标", "净需求-目标表", "按站点+主SKU分类匹配类目目标"],
+          ["实际库存", "千易库存数据", "SUMIFS(库存合计, 站点, 主SKU分类)"],
+          ["备货准确率", "本sheet", "实际库存 / 计划目标"],
+          ["周转系数", "净需求-目标表", "按站点+主SKU分类匹配类目周转系数"]
+        ]
+      },
+      "mid_month.a2Sku": {
+        op: "以A2类目SKU销售监控数据口径的完整行集合和顺序为基线，逐行计算当月目标、销量、库存和周转系数。",
+        keep: "供应商、站点、产品分级、产品主类/材质、主SKU分类、产品编码、产品名称、月份、季度、计划目标、实际销量、目标完成率、实际库存、备货准确率、周转系数。",
+        remove: "不保留订单、店铺、仓库和批次明细。",
+        add: [
+          ["供应商/站点/产品分级/材质/类目/产品编码/产品名称", "A2类目SKU销售监控数据口径", "逐行复制管理维度并保持来源顺序"],
+          ["月份/季度", "千易商品销售统计", "引用销售归属月，不加1个月"],
+          ["计划目标", "净需求-目标表", "按站点+产品编码匹配SKU目标"],
+          ["实际销量", "千易商品销售统计", "SUMIFS(销售sku数量VALUE, 站点, 产品编码)"],
+          ["目标完成率", "本sheet", "IFERROR(实际销量/计划目标,空白)"],
+          ["实际库存", "千易库存数据", "SUMIFS(库存合计, 站点, 产品编码)"],
+          ["备货准确率", "本sheet", "IFERROR(实际库存/计划目标,空白)"],
+          ["周转系数", "净需求-目标表", "按站点+产品编码匹配SKU周转系数"]
+        ]
+      },
+      "mid_month.b1Operator": {
+        op: "以B1运营口径的站点+运营+主SKU分类为唯一粒度，汇总销售归属月实际销量、实际销售额和销售额占比。",
+        keep: "站点、产品分级、产品主类/材质、主SKU分类、运营、月份、季度、实际销量、实际销售额、销售额占比。",
+        remove: "不保留店铺、SKU和订单明细。",
+        add: [
+          ["站点/产品分级/产品主类/材质/主SKU分类/运营", "B1运营类目数据口径", "逐行复制；类目字段对应主SKU分类"],
+          ["月份/季度", "千易商品销售统计", "引用销售归属月"],
+          ["实际销量/实际销售额", "千易商品销售统计", "按站点+运营+主SKU分类SUMIFS"],
+          ["销售额占比", "本sheet", "IFERROR(当前销售额/同站点同运营销售额合计,0)"]
+        ]
+      },
+      "mid_month.b2Store": {
+        op: "以B2店铺口径的站点+店铺+主SKU分类为唯一粒度，汇总销售归属月库存、销量、非零平均售价和销售额。",
+        keep: "站点、店铺名、运营、产品分级、产品主类/材质、主SKU分类、月份、季度、实际库存、实际销量、客单价（RMB）、实际销售额。",
+        remove: "不保留SKU、订单和仓库明细。",
+        add: [
+          ["站点/店铺名/运营/产品分级/产品主类/材质/主SKU分类", "B2店铺类目数据口径", "逐行复制管理维度并保持来源顺序"],
+          ["月份/季度", "千易商品销售统计", "引用销售归属月"],
+          ["实际库存", "千易库存数据", "按站点+主SKU分类SUMIFS库存合计"],
+          ["实际销量/实际销售额", "千易商品销售统计", "按站点+店铺+主SKU分类SUMIFS"],
+          ["客单价（RMB）", "千易商品销售统计", "IFERROR(AVERAGEIFS(平均售价VALUE,同粒度,非零),0)"]
+        ]
+      },
+      "mid_net_demand.demand": {
+        op: "以当前站点模板保留产品粒度和公式结构，按执行月份M生成M至M+5六个月窗口；P:U按计划目标表真实月份列重写引用公式。",
+        keep: "产品粒度、排序、新品/老品、包装取整规则、历史公式结构和人工维护字段。",
+        remove: "不保留模板外部数据Sheet的旧缓存；计划目标缺月或重复时停止，不生成半成品。",
+        add: [
+          ["类目目标 M~M+5", "计划目标表", "按YY年M月目标或YYYY年M月目标定位真实列；缺月报错"],
+          ["SKU目标 M~M+5", "本sheet", "类目目标×颜色销量占比×尺码销量占比"],
+          ["M~M+3月库存", "千易库存数据/在途批次数据", "按月承接库存并扣减同月SKU目标"],
+          ["目标/库存金额与月周转率", "本sheet", "表头随M滚动，公式保持同月对应关系"]
+        ]
+      },
+      "mid_net_demand.target": {
+        op: "保留模板人工维护的产品分级、月度目标和实际完成值；运行前校验M至M+5六个月目标列完整且唯一。",
+        keep: "全部人工目标、实际完成值、产品分级、类目粒度和原始排序。",
+        remove: "不新增、不覆盖人工目标；缺失目标月份不得替换为0或上一月。",
+        add: []
+      },
+      "mid_net_demand.receiving": {
+        op: "读取M下一自然月1日的收货中入库单，按收货仓筛选当前站点批次并生成48列。",
+        keep: "源入库单明细全部46列，并在收货仓后保留站点、在仓库上架数量后保留差异数据。",
+        remove: "删除其他站点批次记录，不跨站点合并印尼1与印尼2。",
+        add: [
+          ["站点", "仓库信息表", "按收货仓映射对应站点"],
+          ["差异数据", "本sheet", "批注含点完时MAX(预计数量-仓库上架数量,0)，否则0"]
+        ]
+      },
+      "mid_net_demand.stock": {
+        op: "读取M下一自然月1日库存快照并按站点批次筛选，保留16列库存与销量窗口。",
+        keep: "商品编码、商品名称、仓库、可用量、在途量及3/7/15/30/60/90天销量。",
+        remove: "删除其他站点批次库存；印尼按具体仓库拆分。",
+        add: [
+          ["主SKU分类", "SKU信息表", "按商品编码匹配"],
+          ["站点（中文）", "仓库信息表", "按仓库匹配"],
+          ["未收到库存", "千易入库单_收货中", "按商品编码+仓库SUMIFS差异数据"],
+          ["实际在途量/库存合计", "本sheet", "MAX(在途量-未收到库存,0)；实际在途量+可用量"]
+        ]
+      },
+      "mid_net_demand.inbound": {
+        op: "每次执行先清空旧数据，再从在途批次表入库单表按站点_批次同步静态值。",
+        keep: "入库单号、仓库、商品编码、预计数量、交货时间、到货时间，共6列。",
+        remove: "删除上次执行数据和其他站点批次记录，不复制源公式。",
+        add: []
+      },
+      "mid_net_demand.batch": {
+        op: "从当前站点批次的SKU批次表复制Excel计算后的前四批缓存值。",
+        keep: "商品编码及前四批的入库单号、数量、交货时间、预计到货时间，共17列。",
+        remove: "不在净需求工作簿内重新排序、重新聚合或重新计算批次。",
+        add: []
+      },
+      "mid_month.target": {
+        op: "合并五份已由Excel计算保存的分站点净需求结果，提取前四批、连续月类目/SKU目标并计算两级周转系数。",
+        keep: "站点CN/EN、主SKU分类、材质、子类目、产品编码、可售、实际在途、连续月类目/SKU目标、两级在途批次计数和周转系数、前四批字段。",
+        remove: "不保留净需求源表中与目标、库存、在途和批次无关的展示辅助列。",
+        add: [
+          ["站点CN/站点EN", "分站点净需求结果文件", "从文件名提取站点批次；印尼1/2映射为印尼/ID"],
+          ["类目目标YYYY.MM", "分站点净需求结果/净需求表", "按动态月份字段读取Excel缓存"],
+          ["SKU目标YYYY.MM", "分站点净需求结果/净需求表", "按动态月份字段读取Excel缓存"],
+          ["前1-4批数量/到货日期", "分站点净需求结果/净需求表", "读取已计算保存的批次缓存"],
+          ["SKU在途批次计数", "本sheet", "仅累计目标月起窗口内批次；泰/马/菲3个月，印尼4个月"],
+          ["SKU周转系数", "本sheet", "SKU在途批次计数/同窗口SKU目标合计"],
+          ["类目在途批次计数", "本sheet", "按站点+主SKU分类汇总SKU在途批次计数"],
+          ["类目周转系数", "本sheet", "类目在途批次计数/同窗口类目目标合计"]
+        ]
+      },
+      "res_month.grade": {
+        op: "结果表内部评分维表：由A1平均销售额占比与毛利、净利、周转、平台适配评分加权得到综合分和产品等级，最终定级供四张业务表回填。",
+        keep: "站点、产品主类/材质、产品名称、产品阶段、各评分/权重/加权分、综合分、产品等级、最终定级、备注。",
+        remove: "禁止保留外部工作簿公式链接。",
+        add: [
+          ["销售额占比", "A1类目销售数据表", "按站点+产品名称SUMIFS平均销售额占比"],
+          ["综合分", "本sheet", "销售/毛利/净利/周转/平台适配加权分求和"],
+          ["产品等级", "本sheet", "综合分映射S/A/B/C"],
+          ["产品主类/材质", "待确认内部来源", "当前45个公式引用外部[1]产品动态分级表（初稿），需替换或固化"]
+        ]
+      },
+      "res_month.a1": {
+        op: "以站点+主SKU分类对齐月度A1，写入最新月份指标块并把历史块按月份从晚到早右移；产品分级从动态分级表回填。",
+        keep: "6个左侧维度及全部历史月份块；目标等手工字段不得被空值覆盖。",
+        remove: "删除重复月份块和失效外部引用。",
+        add: [
+          ["产品分级", "产品动态分级表", "按站点+主SKU分类匹配最终定级"],
+          ["平均销售额占比", "本sheet", "对当前及有效历史块销售额占比求非空平均"],
+          ["当月销量/销售额/目标/库存/准确率/周转", "月度中间表A1", "读取Excel计算后的缓存值"],
+          ["目标完成率", "本sheet", "IFERROR(销量/目标,空白)"],
+          ["增长系数", "本sheet", "当前块/右侧最近历史块；无基期置空"],
+          ["销售额占比", "本sheet", "当前块销售额/同站点当前块销售额合计"]
+        ]
+      },
+      "res_month.a2": {
+        op: "以站点+产品编码对齐月度A2，写入最新月份目标、销量、库存和周转缓存，并保留历史块。",
+        keep: "7个维度和全部8字段月份块。",
+        remove: "不按当月销量删除历史SKU粒度。",
+        add: [
+          ["产品分级", "产品动态分级表", "按站点+主SKU分类匹配最终定级"],
+          ["当月8项指标", "月度中间表A2", "读取Excel公式缓存值"],
+          ["目标完成率/备货准确率", "本sheet", "分母为空或0时返回空白"]
+        ]
+      },
+      "res_month.b2": {
+        op: "以站点+店铺+主SKU分类对齐月度B2，写入当月实际指标，保留目标销量（手填）并计算目标销售额、完成率和环比。",
+        keep: "6个维度、手填目标及全部历史12字段月份块。",
+        remove: "最早历史块没有更早基期时删除失效增长公式；当前样本AC列251个#REF必须清理。",
+        add: [
+          ["产品分级", "产品动态分级表", "按站点+主SKU分类匹配最终定级"],
+          ["库存/客单价/实际销量/实际销售额", "月度中间表B2", "读取Excel缓存值"],
+          ["目标销售额", "本sheet", "IFERROR(目标销量（手填）*客单价,0)"],
+          ["完成率", "本sheet", "IFERROR(实际值/目标值,空白)"],
+          ["增长系数", "本sheet", "当前实际值/右侧最近历史实际值；无基期置空"]
+        ]
+      },
+      "res_month.b1": {
+        op: "以站点+运营+主SKU分类对齐月度B1；实际销量/销售额来自中间表，目标销量/目标销售额从结果B2按同粒度汇总。",
+        keep: "5个维度和全部11字段月份块。",
+        remove: "删除重复月份和失效除法公式。",
+        add: [
+          ["产品分级", "产品动态分级表", "按站点+主SKU分类匹配最终定级"],
+          ["上月销量/上月销售额/销售额占比", "月度中间表B1", "读取实际销量、实际销售额和占比缓存"],
+          ["目标销量/目标销售额", "结果表B2", "按站点+运营+主SKU分类SUMIFS"],
+          ["完成率", "本sheet", "IFERROR(上月实际/目标,空白)"],
+          ["增长系数", "本sheet", "当前目标/右侧最近历史目标；无基期置空"]
+        ]
+      },
+      "mid_batch.inNew": {
+        op: "将每月 1 号新建入库单复制到在途批次表，按收货仓映射站点，并按入库单号从飞书跟进表补充发货、到仓和整合时间。",
+        keep: "入库单号、收货仓、站点（中文）、商品编码、预计数量、发货时间、到仓时间、到仓时间整合。",
+        remove: "不保留与批次计算无关的入库单原始辅助字段。",
+        add: [
+          ["站点（中文）", "仓库信息表", "VLOOKUP(收货仓, 仓库信息表)"],
+          ["发货时间", "飞书-入库单跟进表", "VLOOKUP(入库单号, 飞书跟进表)"],
+          ["到仓时间", "飞书-入库单跟进表", "VLOOKUP(入库单号, 飞书跟进表)"],
+          ["到仓时间整合", "飞书-入库单跟进表", "VLOOKUP(入库单号, 飞书跟进表)"]
+        ]
+      },
+      "mid_batch.aUnshipped": {
+        op: "将 A 未发数据表原样复制到在途批次表，作为尚未生成千易入库单号但需要纳入批次的供应商未发数据。",
+        keep: "站点、仓库、SKU、数量、要求发货时间、到仓时间、到仓时间整合。",
+        remove: "无明显删除，原样进入在途批次表。",
+        add: []
+      },
+      "mid_batch.order": {
+        op: "合并千易入库单_新建和 A未发数据表，形成统一入库单表；千易入库单按入库单号补飞书时间，A未发数据沿用自身要求发货和到仓字段。",
+        keep: "入库单号、站点（中文）、仓库、站点_批次、商品编码、预计数量、预计数量Value、发货时间、到仓时间、到仓时间整合。",
+        remove: "删除来源表中与站点、SKU、数量、时间无关的过程字段。",
+        add: [
+          ["预计数量Value", "本sheet", "预计数量 + 0"],
+          ["发货时间", "飞书-入库单跟进表/A未发数据表", "千易入库单按入库单号匹配；A未发沿用要求发货时间"],
+          ["到仓时间整合", "飞书-入库单跟进表/A未发数据表", "千易入库单按入库单号匹配；A未发沿用到仓时间整合"]
+        ]
+      },
+      "mid_batch.skuBatchTH": {
+        op: "按泰国站点和 SKU 从入库单表筛选未到货在途批次，按到仓/发货时间排序后取前 4 个批次。",
+        keep: "商品编码，以及前 4 个批次的入库单号、数量、交货时间、预计到货时间。",
+        remove: "不保留超过前 4 个批次的明细，也不保留非泰国站点数据。",
+        add: [["第1-4批次字段", "入库单表", "LET/FILTER/SORTBY/UNIQUE/TEXTJOIN 按站点+SKU取前4个批次"]]
+      },
+      "mid_batch.skuBatchID1": {
+        op: "按站点_批次=印尼1和 SKU 从入库单表筛选在途批次，按到仓/发货时间排序后取前 4 个批次。",
+        keep: "商品编码，以及前 4 个批次的入库单号、数量、交货时间、预计到货时间。",
+        remove: "不保留超过前 4 个批次的明细，也不保留印尼2或其他站点数据。",
+        add: [["第1-4批次字段", "入库单表", "LET/FILTER/SORTBY/UNIQUE/TEXTJOIN 按站点_批次+SKU取前4个批次"]]
+      },
+      "mid_batch.skuBatchID2": {
+        op: "按站点_批次=印尼2和 SKU 从入库单表筛选在途批次，按到仓/发货时间排序后取前 4 个批次。",
+        keep: "商品编码，以及前 4 个批次的入库单号、数量、交货时间、预计到货时间。",
+        remove: "不保留超过前 4 个批次的明细，也不保留印尼1或其他站点数据。",
+        add: [["第1-4批次字段", "入库单表", "LET/FILTER/SORTBY/UNIQUE/TEXTJOIN 按站点_批次+SKU取前4个批次"]]
+      },
+      "mid_batch.skuBatchMY": {
+        op: "按马来站点和 SKU 从入库单表筛选未到货在途批次，按到仓/发货时间排序后取前 4 个批次。",
+        keep: "商品编码，以及前 4 个批次的入库单号、数量、交货时间、预计到货时间。",
+        remove: "不保留超过前 4 个批次的明细，也不保留非马来站点数据。",
+        add: [["第1-4批次字段", "入库单表", "LET/FILTER/SORTBY/UNIQUE/TEXTJOIN 按站点+SKU取前4个批次"]]
+      },
+      "mid_batch.skuBatchPH": {
+        op: "按菲律宾站点和 SKU 从入库单表筛选未到货在途批次，按到仓/发货时间排序后取前 4 个批次。",
+        keep: "商品编码，以及前 4 个批次的入库单号、数量、交货时间、预计到货时间。",
+        remove: "不保留超过前 4 个批次的明细，也不保留非菲律宾站点数据。",
+        add: [["第1-4批次字段", "入库单表", "LET/FILTER/SORTBY/UNIQUE/TEXTJOIN 按站点+SKU取前4个批次"]]
+      },
+      "mid_batch.feishu": {
+        op: "复制飞书入库单跟进表，作为在途批次表的发货、到仓和到货状态来源。",
+        keep: "仓库、站点、入库单号、发货时间、到仓时间、到仓时间整合、是否到货、到货天数。",
+        remove: "删除空白辅助列。",
+        add: [["到货天数", "本sheet", "按月度执行基准日期与到仓时间整合计算；若模板出现 #REF，脚本需显式写入基准日期引用"]]
+      }
+    };
+
+    const genericDetails = {
+      op: "作为源/维表或中间 sheet 参与链路，按当前 sheet 用途被复制、匹配、聚合或引用。",
+      keep: "作为维表或源明细进入链路，保留当前 sheet 的主要字段供后续计算引用。",
+      remove: "不直接输出到结果表，只在后续 sheet 中被匹配、聚合或补充字段。",
+      add: []
+    };
+
+    const state = {
+      view: "daily",
+      selected: null,
+      nodes: new Map(),
+      hovered: null,
+      renderWidth: 2800,
+      renderHeight: 1560,
+      panelRect: null,
+      animStart: 0,
+      flowStart: 0,
+      animating: false
+    };
+
+    const canvas = document.getElementById("erCanvas");
+    const shell = document.getElementById("canvasShell");
+    const ctx = canvas.getContext("2d");
+    const MIN_CANVAS_WIDTH = 2900;
+    const ENTITY_GAP_Y = 30;
+    const SHEET_GAP_Y = 14;
+    const ANIM_MS = 780;
+    const now = () => (window.performance && performance.now ? performance.now() : Date.now());
+    const raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : fn => setTimeout(fn, 16);
+
+    function activeEntities() {
+      const view = state.view;
+      const sources = sourceEntities
+        .map(e => ({
+          ...e,
+          sheets: e.sheets.filter(s => view === "monthly" ? s.monthly : s.daily)
+        }))
+        .filter(e => e.sheets.length);
+      const middles = middleEntities.filter(e => e.view === view);
+      const results = resultEntities.filter(e => e.view === view);
+      return { sources, middles, results };
+    }
+
+    function activeIds(data) {
+      const ids = new Set();
+      [...data.sources, ...data.middles, ...data.results].forEach(entity => {
+        entity.sheets.forEach(sheet => ids.add(sheet.id));
+      });
+      return ids;
+    }
+
+    function activeRelations() {
+      const data = activeEntities();
+      const ids = activeIds(data);
+      return relations.filter(r => ids.has(r.from) && ids.has(r.to));
+    }
+
+    function sheetName(id) {
+      for (const entity of [...sourceEntities, ...middleEntities, ...resultEntities]) {
+        const sheet = entity.sheets.find(s => s.id === id);
+        if (sheet) return sheet.name;
+      }
+      return id;
+    }
+
+    function entityColor(entity) {
+      if (entity.map) return COLORS.map;
+      if (entity.lane === "source") return COLORS.source;
+      if (entity.lane === "middle") return COLORS.middle;
+      return COLORS.result;
+    }
+
+    function fitCanvas() {
+      const viewportWidth = document.documentElement.clientWidth;
+      shell.style.width = `${viewportWidth}px`;
+      shell.style.marginLeft = `calc(50% - ${viewportWidth / 2}px)`;
+      const width = Math.max(MIN_CANVAS_WIDTH, shell.clientWidth);
+      const data = activeEntities();
+      const sourceH = stackHeight(data.sources);
+      const middleH = stackHeight(data.middles);
+      const resultH = stackHeight(data.results);
+      const topSpace = shell.clientWidth < 700 ? 230 : 150;
+      const targetH = Math.max(1180, sourceH + topSpace, middleH + topSpace, resultH + topSpace + 30);
+      state.renderWidth = width;
+      state.renderHeight = targetH;
+      shell.style.height = `${targetH}px`;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(targetH * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${targetH}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }
+
+    function stackHeight(entities) {
+      return entities.reduce((sum, e) => sum + entityHeight(e) + ENTITY_GAP_Y, 0);
+    }
+
+    function entityHeight(entity) {
+      const headerHeight = entity.path ? 112 : 92;
+      return headerHeight + entity.sheets.length * 66 + Math.max(0, entity.sheets.length - 1) * SHEET_GAP_Y;
+    }
+
+    function layout(data) {
+      const w = state.renderWidth;
+      const padding = 34;
+      const entityGap = 280;
+      const panelGap = 80;
+      const sourceW = 455;
+      const middleW = 555;
+      const resultW = 560;
+      const panelW = 430;
+      const sourceX = padding;
+      const middleX = sourceX + sourceW + entityGap;
+      const resultX = middleX + middleW + entityGap;
+      const panelX = resultX + resultW + panelGap;
+      const yStart = shell.clientWidth < 700 ? 184 : 104;
+      const positions = {
+        source: { x: sourceX, w: sourceW },
+        middle: { x: middleX, w: middleW },
+        result: { x: resultX, w: resultW },
+        panel: { x: panelX, w: panelW }
+      };
+      state.panelRect = positions.panel;
+      placeStack(data.sources, positions.source.x, yStart, positions.source.w);
+      placeStack(data.middles, positions.middle.x, yStart, positions.middle.w);
+      placeStack(data.results, positions.result.x, yStart, positions.result.w);
+      return positions;
+    }
+
+    function placeStack(entities, x, y, width) {
+      entities.forEach(entity => {
+        entity.x = x;
+        entity.y = y;
+        entity.w = width;
+        entity.h = entityHeight(entity);
+        let sy = y + (entity.path ? 102 : 82);
+        entity.sheets.forEach(sheet => {
+          sheet.x = x + 18;
+          sheet.y = sy;
+          sheet.w = width - 36;
+          sheet.h = 66;
+          state.nodes.set(sheet.id, { x: sheet.x, y: sheet.y, w: sheet.w, h: sheet.h, entity, sheet });
+          sy += 66 + SHEET_GAP_Y;
+        });
+        y += entity.h + ENTITY_GAP_Y;
+      });
+    }
+
+    function draw() {
+      const data = activeEntities();
+      state.nodes.clear();
+      ctx.clearRect(0, 0, state.renderWidth, state.renderHeight);
+      drawBackground();
+      const positions = layout(data);
+      drawConnectorGutters(positions);
+      drawLaneTitles(positions);
+      const rels = activeRelations();
+      const labelQueue = [];
+      if (state.selected) drawRelations(rels, "external", labelQueue);
+      [...data.sources, ...data.middles, ...data.results].forEach(drawEntity);
+      if (state.selected) drawRelations(rels, "internal", labelQueue);
+      drawRelationLabels(labelQueue);
+      drawLogicPanel(positions.panel, rels);
+    }
+
+    function drawBackground() {
+      ctx.save();
+      ctx.fillStyle = "rgba(255,253,247,.55)";
+      ctx.fillRect(0, 0, state.renderWidth, state.renderHeight);
+      ctx.restore();
+    }
+
+    function animationProgress() {
+      if (!state.animStart) return 1;
+      return Math.min(1, (now() - state.animStart) / ANIM_MS);
+    }
+
+    function easedProgress() {
+      const t = animationProgress();
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    function startSceneAnimation() {
+      state.animStart = now();
+      state.flowStart = state.animStart;
+      state.animating = true;
+      const tick = () => {
+        draw();
+        if (state.selected && state.animating) {
+          raf(tick);
+        } else {
+          state.animating = false;
+          draw();
+        }
+      };
+      raf(tick);
+    }
+
+    function ensurePanelVisible() {
+      const panel = state.panelRect;
+      if (!panel || !shell.scrollTo) return;
+      const margin = 28;
+      const visibleLeft = shell.scrollLeft;
+      const visibleRight = visibleLeft + shell.clientWidth;
+      const panelRight = panel.x + panel.w;
+      if (panelRight + margin > visibleRight || panel.x - margin < visibleLeft) {
+        const maxLeft = Math.max(0, state.renderWidth - shell.clientWidth);
+        const target = Math.max(0, Math.min(panelRight - shell.clientWidth + margin, maxLeft));
+        shell.scrollTo({ left: target, behavior: "smooth" });
+      }
+    }
+
+    function drawLaneTitles(positions) {
+      const titles = [
+        ["源数据 Excel 实体", positions.source, COLORS.source],
+        ["数据中间表 Excel 实体", positions.middle, COLORS.middle],
+        ["结果表 Excel 实体", positions.result, COLORS.result]
+      ];
+      titles.forEach(([title, pos, color]) => {
+        ctx.save();
+        ctx.fillStyle = "rgba(32,41,54,.06)";
+        roundRect(pos.x, 60, pos.w, 34, 8, true, false);
+        ctx.fillStyle = color;
+        ctx.font = "900 16px Microsoft YaHei, sans-serif";
+        ctx.fillText(title, pos.x + 16, 82);
+        ctx.restore();
+      });
+    }
+
+    function drawConnectorGutters(positions) {
+      const gutters = [
+        [positions.source.x + positions.source.w + 14, positions.middle.x - 14],
+        [positions.middle.x + positions.middle.w + 14, positions.result.x - 14],
+        [positions.result.x + positions.result.w + 14, positions.panel.x - 14]
+      ];
+      ctx.save();
+      gutters.forEach(([x1, x2]) => {
+        if (x2 <= x1) return;
+        const w = x2 - x1;
+        ctx.fillStyle = "rgba(169, 80, 45, .035)";
+        roundRect(x1, 104, w, state.renderHeight - 140, 8, true, false);
+        ctx.strokeStyle = "rgba(169, 80, 45, .08)";
+        ctx.setLineDash([6, 10]);
+        ctx.beginPath();
+        ctx.moveTo(x1 + w / 2, 112);
+        ctx.lineTo(x1 + w / 2, state.renderHeight - 48);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      });
+      ctx.restore();
+    }
+
+    function drawEntity(entity) {
+      const color = entityColor(entity);
+      ctx.save();
+      ctx.shadowColor = "rgba(32,41,54,.10)";
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetY = 8;
+      ctx.fillStyle = entity.lane === "source" ? "rgba(232,246,243,.92)" : entity.lane === "middle" ? "rgba(237,245,255,.94)" : "rgba(255,247,232,.95)";
+      ctx.strokeStyle = "rgba(32,41,54,.13)";
+      roundRect(entity.x, entity.y, entity.w, entity.h, 8, true, true);
+      ctx.shadowColor = "transparent";
+      ctx.fillStyle = color;
+      ctx.fillRect(entity.x, entity.y, 9, entity.h);
+      ctx.fillStyle = color;
+      ctx.font = "900 13px Microsoft YaHei, sans-serif";
+      ctx.fillText(entity.title, entity.x + 22, entity.y + 28);
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = "900 19px Microsoft YaHei, sans-serif";
+      wrapText(entity.file, entity.x + 22, entity.y + 58, entity.w - 44, 22, 2);
+      if (entity.path) {
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = "900 12px Microsoft YaHei, sans-serif";
+        wrapText(entity.path, entity.x + 22, entity.y + 86, entity.w - 44, 16, 1);
+      }
+
+      entity.sheets.forEach(sheet => drawSheet(sheet, color));
+      ctx.restore();
+    }
+
+    function drawSheet(sheet, color) {
+      const selected = state.selected === sheet.id;
+      const hovered = state.hovered === sheet.id;
+      const pulse = selected ? Math.sin(easedProgress() * Math.PI) : 0;
+      ctx.save();
+      ctx.fillStyle = selected ? "rgba(255,247,212,.98)" : hovered ? "rgba(255,255,255,.98)" : "rgba(255,255,255,.9)";
+      ctx.strokeStyle = selected ? color : "rgba(32,41,54,.14)";
+      ctx.lineWidth = selected ? 2.5 + pulse * 1.6 : 1;
+      roundRect(sheet.x, sheet.y, sheet.w, sheet.h, 7, true, true);
+      if (selected) {
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = .18 + pulse * .28;
+        ctx.lineWidth = 8 + pulse * 8;
+        roundRect(sheet.x - 4, sheet.y - 4, sheet.w + 8, sheet.h + 8, 10, false, true);
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = color;
+      ctx.font = "900 14px Microsoft YaHei, sans-serif";
+      ctx.fillText(sheet.name, sheet.x + 14, sheet.y + 25);
+      ctx.fillStyle = COLORS.muted;
+      ctx.font = "13px Microsoft YaHei, sans-serif";
+      wrapText(sheet.desc || "", sheet.x + 14, sheet.y + 48, sheet.w - 28, 18, 2);
+      ctx.restore();
+    }
+
+    function drawRelations(rels, mode = "all", labelQueue = []) {
+      const selected = state.selected;
+      const filtered = rels.filter(r => r.from === selected || r.to === selected);
+      const internalCount = filtered.filter(r => {
+        const from = state.nodes.get(r.from);
+        const to = state.nodes.get(r.to);
+        if (!from || !to) return false;
+        const sameEntity = from.entity.id === to.entity.id;
+        const middleCrossEntity = from.entity.lane === "middle" && to.entity.lane === "middle" && !sameEntity;
+        return sameEntity || middleCrossEntity;
+      }).length;
+      let internalSummaryDrawn = false;
+      let internalOrdinal = 0;
+      const progress = easedProgress();
+      const flow = state.flowStart ? ((now() - state.flowStart) / 1000) : 0;
+      filtered.forEach((r, i) => {
+        const from = state.nodes.get(r.from);
+        const to = state.nodes.get(r.to);
+        if (!from || !to) return;
+        const sameEntity = from.entity.id === to.entity.id;
+        const middleToMiddle = from.entity.lane === "middle" && to.entity.lane === "middle";
+        const middleCrossEntity = middleToMiddle && !sameEntity;
+        const dynamicEntityLine = sameEntity || middleCrossEntity;
+        if (mode === "external" && dynamicEntityLine) return;
+        if (mode === "internal" && !dynamicEntityLine) return;
+        const a = { x: from.x + from.w, y: from.y + from.h / 2 };
+        const b = { x: to.x, y: to.y + to.h / 2 };
+        const color = r.to.startsWith("res_") || r.from.startsWith("res_") ? COLORS.result : COLORS.logic;
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = dynamicEntityLine ? 2 + progress * 1.2 : 2.2 + progress * 1.4;
+        ctx.globalAlpha = dynamicEntityLine ? .34 + progress * .56 : .22 + progress * .68;
+        ctx.setLineDash(dynamicEntityLine ? [8, 8] : [14, 9]);
+        ctx.lineDashOffset = dynamicEntityLine ? -flow * 48 - i * 7 : -progress * 54 - i * 5;
+        ctx.beginPath();
+        if (dynamicEntityLine) {
+          const railIndex = internalOrdinal++;
+          const routeLeft = middleCrossEntity;
+          const railBaseEntity = routeLeft
+            ? (from.entity.x <= to.entity.x ? from.entity : to.entity)
+            : from.entity;
+          const railX = routeLeft
+            ? railBaseEntity.x - 34 - (railIndex % 8) * 18
+            : railBaseEntity.x + railBaseEntity.w + 30 + (railIndex % 8) * 18;
+          const fromY = from.y + from.h / 2;
+          const toY = to.y + to.h / 2;
+          const start = { x: routeLeft ? from.x + 8 : from.x + from.w - 8, y: fromY };
+          const end = { x: routeLeft ? to.x + 8 : to.x + to.w - 8, y: toY };
+          const spread = Math.min(130, Math.max(58, Math.abs(toY - fromY) * .28));
+          const c1 = { x: routeLeft ? railX - spread * .34 : railX + spread, y: fromY };
+          const c2 = { x: routeLeft ? railX - spread * .34 : railX + spread, y: toY };
+          ctx.moveTo(start.x, start.y);
+          ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          drawInternalFlowDot(start, c1, c2, end, color, (flow * .58 + railIndex * .17) % 1);
+          drawInternalFlowDot(start, c1, c2, end, color, (flow * .58 + railIndex * .17 + .48) % 1, .45);
+        } else {
+          const mid = (a.x + b.x) / 2;
+          ctx.moveTo(a.x, a.y);
+          ctx.bezierCurveTo(mid, a.y, mid, b.y, b.x, b.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        if (dynamicEntityLine) {
+          drawArrow(
+            middleCrossEntity ? to.x + 8 : to.x + to.w - 8,
+            to.y + to.h / 2,
+            color,
+            middleCrossEntity ? "right" : "left"
+          );
+          if (internalCount <= 2) {
+            labelQueue.push({ type: "internal", text: r.label, from, to, color, index: i, routeLeft: middleCrossEntity });
+          } else if (!internalSummaryDrawn) {
+            labelQueue.push({ type: "summary", entity: from.entity, count: internalCount, color, routeLeft: middleCrossEntity });
+            internalSummaryDrawn = true;
+          }
+        } else {
+          drawArrow(b.x, b.y, color, "right");
+          drawFlowDot(a, b, color, (progress + i * .12) % 1);
+          if (i < 2 && progress > .55) {
+            labelQueue.push({ type: "line", text: r.label, a, b, color, index: i });
+          }
+        }
+        ctx.restore();
+      });
+    }
+
+    function drawRelationLabels(queue) {
+      if (!queue.length) return;
+      ctx.save();
+      queue.forEach(item => {
+        if (item.type === "line") drawLineLabel(item.text, item.a, item.b, item.color, item.index);
+        if (item.type === "internal") drawInternalRelationBadge(item.text, item.from, item.to, item.color, item.index, item.routeLeft);
+        if (item.type === "summary") drawInternalSummaryBadge(item.entity, item.count, item.color, item.routeLeft);
+      });
+      ctx.restore();
+    }
+
+    function drawFlowDot(a, b, color, t) {
+      ctx.save();
+      const x = a.x + (b.x - a.x) * t;
+      const y = a.y + (b.y - a.y) * t;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = .65;
+      ctx.beginPath();
+      ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function cubicPoint(p0, p1, p2, p3, t) {
+      const u = 1 - t;
+      return {
+        x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+        y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y
+      };
+    }
+
+    function drawInternalFlowDot(p0, p1, p2, p3, color, t, alpha = .78) {
+      const point = cubicPoint(p0, p1, p2, p3, t);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 4.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = alpha * .18;
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 9.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawInternalRelationBadge(text, from, to, color, index, routeLeft = false) {
+      const railX = routeLeft ? from.entity.x - 136 : from.entity.x + from.entity.w + 20;
+      const y = Math.min(from.y, to.y) + Math.abs(from.y - to.y) / 2 + 8 + (index % 2) * 18;
+      ctx.save();
+      ctx.font = "12px Microsoft YaHei, sans-serif";
+      const label = ellipsize(text, 106);
+      ctx.fillStyle = "rgba(255,253,247,.96)";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      roundRect(railX, y - 16, 110, 24, 6, true, true);
+      ctx.fillStyle = color;
+      ctx.fillText(label, railX + 8, y);
+      ctx.restore();
+    }
+
+    function drawInternalSummaryBadge(entity, count, color, routeLeft = false) {
+      const x = routeLeft ? entity.x - 136 : entity.x + entity.w + 20;
+      const y = entity.y + 30;
+      ctx.save();
+      ctx.font = "900 12px Microsoft YaHei, sans-serif";
+      ctx.fillStyle = "rgba(255,253,247,.96)";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      roundRect(x, y - 16, 118, 24, 6, true, true);
+      ctx.fillStyle = color;
+      ctx.fillText(`内部引用 ${count} 条`, x + 10, y);
+      ctx.restore();
+    }
+
+    function drawArrow(x, y, color, direction = "right") {
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      if (direction === "left") {
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + 10, y - 5);
+        ctx.lineTo(x + 10, y + 5);
+      } else {
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 10, y - 5);
+        ctx.lineTo(x - 10, y + 5);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawLineLabel(text, a, b, color, index) {
+      const maxW = 220;
+      const x = Math.min(a.x, b.x) + Math.abs(b.x - a.x) * .5 - maxW / 2;
+      const y = (a.y + b.y) / 2 - 22 + (index % 3) * 24;
+      ctx.save();
+      ctx.font = "12px Microsoft YaHei, sans-serif";
+      const lines = splitLines(text, maxW);
+      const h = 18 + lines.length * 16;
+      ctx.fillStyle = "rgba(255,253,247,.96)";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      roundRect(x - 8, y - 14, maxW + 16, h, 6, true, true);
+      ctx.fillStyle = color;
+      lines.slice(0, 2).forEach((line, idx) => ctx.fillText(line, x, y + idx * 16));
+      ctx.restore();
+    }
+
+    function drawLogicPanel(panel, rels) {
+      ctx.save();
+      const progress = state.selected ? easedProgress() : 1;
+      const x = panel.x + (state.selected ? (1 - progress) * 22 : 0);
+      const y = 60;
+      const w = panel.w;
+      const h = state.renderHeight - 86;
+      const padX = 24;
+      const contentX = x + padX;
+      const contentW = w - padX * 2;
+      ctx.globalAlpha = state.selected ? .35 + progress * .65 : 1;
+      ctx.fillStyle = "rgba(255,253,247,.95)";
+      ctx.strokeStyle = "rgba(32,41,54,.14)";
+      roundRect(x, y, w, h, 8, true, true);
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = "900 18px Microsoft YaHei, sans-serif";
+      ctx.fillText("Sheet 逻辑说明", contentX, y + 36);
+
+      if (!state.selected) {
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = "14px Microsoft YaHei, sans-serif";
+        wrapText("点击左侧任意 sheet 后，这里会显示当前 sheet 的引用来源、被引用去向、保留/删除字段，以及新增字段和公式。默认隐藏连线，避免文本重叠。", contentX, y + 72, contentW, 22, 8);
+        drawEmptyResultHint(contentX, y + 202, contentW);
+        ctx.restore();
+        return;
+      }
+
+      const selected = state.nodes.get(state.selected);
+      let cursor = y + 68;
+      cursor = drawTagLine("当前选中", [selected?.sheet.name || state.selected], contentX, cursor, contentW, "green");
+
+      const inRefs = rels.filter(r => r.to === state.selected).map(r => sheetName(r.from));
+      const outRefs = rels.filter(r => r.from === state.selected).map(r => sheetName(r.to));
+      cursor = drawTagLine("引用来源", inRefs.length ? inRefs : ["无上游或源头 sheet"], contentX, cursor + 16, contentW, "green");
+      cursor = drawTagLine("被引用去向", outRefs.length ? outRefs : ["暂无下游引用"], contentX, cursor + 16, contentW, "green");
+
+      const d = details[state.selected] || genericDetails;
+      cursor = drawSectionTitle("数据操作", contentX, cursor + 26);
+      cursor = drawFieldBlock("操作逻辑", d.op || genericDetails.op, contentX, cursor + 12, contentW);
+      cursor = drawSectionTitle("核心变更字段", contentX, cursor + 28);
+      cursor = drawFieldBlock("保留字段", d.keep, contentX, cursor + 12, contentW);
+      cursor = drawFieldBlock("删除字段", d.remove, contentX, cursor + 14, contentW);
+      cursor = drawAddTable(d.add || [], contentX, cursor + 18, contentW, h - cursor + y - 48);
+      ctx.restore();
+    }
+
+    function drawEmptyResultHint(x, y, w) {
+      if (state.view !== "monthly") return;
+      ctx.save();
+      ctx.fillStyle = "rgba(122,75,22,.08)";
+      ctx.strokeStyle = "rgba(122,75,22,.22)";
+      const padX = 18;
+      const boxH = 128;
+      roundRect(x, y, w, boxH, 8, true, true);
+      ctx.fillStyle = COLORS.result;
+      ctx.font = "900 14px Microsoft YaHei, sans-serif";
+      ctx.fillText("结果表说明", x + padX, y + 30);
+      ctx.fillStyle = COLORS.muted;
+      ctx.font = "13px Microsoft YaHei, sans-serif";
+      wrapText("每日结果表读取每日中间表经 Excel 计算后的缓存值；月度链路依次生成在途批次表子目录文件、五份分站点净需求结果、月度数据中间表子目录文件，并更新运营大盘数据监控表。", x + padX, y + 60, w - padX * 2, 20, 4);
+      ctx.restore();
+    }
+
+    function drawSectionTitle(title, x, y) {
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = "900 15px Microsoft YaHei, sans-serif";
+      ctx.fillText(title, x, y);
+      return y + 12;
+    }
+
+    function drawTagLine(label, items, x, y, w, type) {
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = "900 13px Microsoft YaHei, sans-serif";
+      ctx.fillText(label, x, y);
+      let cx = x;
+      let cy = y + 16;
+      items.forEach(item => {
+        const text = String(item);
+        ctx.font = "900 12px Microsoft YaHei, sans-serif";
+        const tw = Math.min(ctx.measureText(text).width + 18, w);
+        if (cx + tw > x + w) {
+          cx = x;
+          cy += 28;
+        }
+        drawPill(text, cx, cy, tw, type);
+        cx += tw + 7;
+      });
+      return cy + 28;
+    }
+
+    function drawFieldBlock(label, text, x, y, w) {
+      ctx.save();
+      ctx.fillStyle = "rgba(36,99,166,.10)";
+      ctx.strokeStyle = "rgba(36,99,166,.18)";
+      const innerX = 14;
+      const innerTop = 27;
+      const innerBottom = 14;
+      const lines = splitLines(`${label}：${text}`, w - innerX * 2);
+      const h = innerTop + innerBottom + Math.max(1, lines.length) * 19;
+      roundRect(x, y, w, h, 7, true, true);
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = "13px Microsoft YaHei, sans-serif";
+      lines.forEach((line, i) => ctx.fillText(line, x + innerX, y + innerTop + i * 19));
+      ctx.restore();
+      return y + h;
+    }
+
+    function drawAddTable(rows, x, y, w, maxH) {
+      ctx.save();
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = "900 13px Microsoft YaHei, sans-serif";
+      ctx.fillText("新增字段及公式", x, y);
+      y += 20;
+      if (!rows.length) {
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = "13px Microsoft YaHei, sans-serif";
+        wrapText("未发现新增字段，或当前 sheet 作为源/维表原样进入。", x, y + 20, w, 20, 2);
+        ctx.restore();
+        return y + 64;
+      }
+      const col1 = Math.floor(w * .27);
+      const col2 = Math.floor(w * .29);
+      const col3 = w - col1 - col2;
+      rows.slice(0, 9).forEach(row => {
+        const formulaLines = splitLines(row[2], col3 - 18).slice(0, 3);
+        const rowH = Math.max(52, 24 + formulaLines.length * 17);
+        if (y + rowH > state.renderHeight - 34 || rowH > maxH) return;
+        ctx.fillStyle = "rgba(36,99,166,.08)";
+        ctx.strokeStyle = "rgba(32,41,54,.11)";
+        roundRect(x, y, w, rowH, 6, true, true);
+        drawPill(row[0], x + 8, y + 12, col1 - 14, "blue");
+        drawPill(row[1], x + col1 + 6, y + 12, col2 - 12, "green");
+        ctx.fillStyle = COLORS.ink;
+        ctx.font = "12px Microsoft YaHei, sans-serif";
+        formulaLines.forEach((line, i) => ctx.fillText(line, x + col1 + col2 + 8, y + 24 + i * 17));
+        y += rowH + 8;
+      });
+      if (rows.length > 9) {
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = "12px Microsoft YaHei, sans-serif";
+        ctx.fillText(`另有 ${rows.length - 9} 个字段，详见 Markdown 文档。`, x + 8, y + 18);
+        y += 28;
+      }
+      ctx.restore();
+      return y;
+    }
+
+    function drawPill(text, x, y, w, type) {
+      ctx.save();
+      const fill = type === "green" ? "rgba(65,152,104,.18)" : "rgba(36,99,166,.16)";
+      const stroke = type === "green" ? "rgba(65,152,104,.28)" : "rgba(36,99,166,.26)";
+      const ink = type === "green" ? "#2f6d4a" : "#245f9d";
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      roundRect(x, y, w, 23, 6, true, true);
+      ctx.fillStyle = ink;
+      ctx.font = "900 12px Microsoft YaHei, sans-serif";
+      const shown = ellipsize(text, w - 12);
+      ctx.fillText(shown, x + 7, y + 16);
+      ctx.restore();
+    }
+
+    function roundRect(x, y, w, h, r, fill, stroke) {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius);
+      ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
+      if (fill) ctx.fill();
+      if (stroke) ctx.stroke();
+    }
+
+    function wrapText(text, x, y, maxWidth, lineHeight, maxLines) {
+      const lines = splitLines(text, maxWidth);
+      const visible = lines.slice(0, maxLines);
+      visible.forEach((line, idx) => {
+        const finalLine = idx === maxLines - 1 && lines.length > maxLines ? ellipsize(line, maxWidth) : line;
+        ctx.fillText(finalLine, x, y + idx * lineHeight);
+      });
+      return visible.length * lineHeight;
+    }
+
+    function splitLines(text, maxWidth) {
+      const source = String(text || "");
+      const lines = [];
+      let current = "";
+      for (const ch of source) {
+        const test = current + ch;
+        if (ctx.measureText(test).width > maxWidth && current) {
+          lines.push(current);
+          current = ch;
+        } else {
+          current = test;
+        }
+      }
+      if (current) lines.push(current);
+      return lines.length ? lines : [""];
+    }
+
+    function ellipsize(text, maxWidth) {
+      let out = String(text || "");
+      if (ctx.measureText(out).width <= maxWidth) return out;
+      while (out.length > 1 && ctx.measureText(out + "…").width > maxWidth) out = out.slice(0, -1);
+      return out + "…";
+    }
+
+    canvas.addEventListener("mousemove", event => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      let hit = null;
+      for (const [id, node] of state.nodes) {
+        if (x >= node.x && x <= node.x + node.w && y >= node.y && y <= node.y + node.h) {
+          hit = id;
+          break;
+        }
+      }
+      if (hit !== state.hovered) {
+        state.hovered = hit;
+        canvas.style.cursor = hit ? "pointer" : "default";
+        draw();
+      }
+    });
+
+    canvas.addEventListener("click", event => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      for (const [id, node] of state.nodes) {
+        if (x >= node.x && x <= node.x + node.w && y >= node.y && y <= node.y + node.h) {
+          state.selected = state.selected === id ? null : id;
+          if (state.selected) {
+            startSceneAnimation();
+            setTimeout(ensurePanelVisible, 40);
+          }
+          else {
+            state.animating = false;
+            draw();
+          }
+          return;
+        }
+      }
+      state.selected = null;
+      state.animating = false;
+      draw();
+    });
+
+    document.querySelectorAll("button[data-view]").forEach(button => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("button[data-view]").forEach(b => b.classList.remove("active"));
+        button.classList.add("active");
+        state.view = button.dataset.view;
+        state.selected = null;
+        state.hovered = null;
+        state.animating = false;
+        shell.scrollLeft = 0;
+        fitCanvas();
+      });
+    });
+
+    window.addEventListener("resize", fitCanvas);
+    fitCanvas();
+  </script>
+</body>
+</html>
