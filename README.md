@@ -14,7 +14,8 @@
 
 ## 一、数据流向图预览
 
-![数据中间表数据流向图](数据中间表数据流向图.png)
+<img width="2880" height="1462" alt="image" src="https://github.com/user-attachments/assets/bcacc970-6967-4a3d-b857-129ce0aa7748" />
+
 
 上图是 [`数据中间表数据流向图.html`](数据中间表数据流向图.html) 的渲染效果：一个 Excel 工作簿是一张实体卡，卡片内按 sheet 分区。页面顶部可切换**每日链路 / 月度链路**；点击任意 sheet 会高亮其引用关系，并在右侧展示引用、被引用及字段的保留/删除/新增公式。
 
