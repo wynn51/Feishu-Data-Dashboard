@@ -11,7 +11,8 @@
 核心原则：业务口径由中间表承载；最终数字必须来自 **Excel 公式计算后的缓存值**，而非 Python 重算。
 
 ---
-![Uploading 飞书运营看板.png…]()
+<img width="2740" height="1298" alt="飞书运营看板" src="https://github.com/user-attachments/assets/4cf5a9e0-c1bc-47b7-b624-8d3c13145368" />
+
 
 
 
