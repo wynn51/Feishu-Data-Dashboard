@@ -37,7 +37,7 @@ VSCODE_RUN_CONFIG = {
     # True：忽略命令行参数，直接使用这里的 root/date，适合 VSCode 右上角 Run Python File。
     # False：使用命令行 --root 和 --date 参数。
     "enabled": True,
-    "root": r"C:\Users\Wynn\Desktop\GS\润钰",
+    "root": r"<ROOT>",
     "date": "2026-06-30",
 }
 
@@ -1931,7 +1931,7 @@ def run(root, date) :
 
     其他 Python 文件也可以 import 本函数后调用：
         from 生成每日销售及库存跟进表 import run
-        run(r"C:\\Users\\Wynn\\Desktop\\GS\\润钰", "2026-06-17")
+        run(r"<ROOT>", "2026-06-17")
     """
     ctx = build_context(root, date)
     try:
@@ -1960,7 +1960,7 @@ def run(root, date) :
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(run(r"C:\Users\Wynn\Desktop\GS\润钰", "2026-07-03"))
+        raise SystemExit(run(r"<ROOT>", "2026-07-03"))
     except Exception as exc:
         print(f"执行失败：{exc}", file=sys.stderr)
         raise

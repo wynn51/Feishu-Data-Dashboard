@@ -935,7 +935,7 @@ def parse_args() :
     return parser.parse_args()
 
 
-VSCODE_ROOT = r"C:\Users\Wynn\Desktop\GS\润钰"
+VSCODE_ROOT = r"<ROOT>"
 VSCODE_MONTH = "2026-06"
 
 
